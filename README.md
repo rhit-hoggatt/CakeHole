@@ -8,7 +8,7 @@ This project was developed as a final project for a computer networks class, aim
 
 * One line automated installation:
 ```bash
-curl -sSL [https://raw.githubusercontent.com/rhit-hoggatt/CakeHole/main/automated_install.sh](https://raw.githubusercontent.com/rhit-hoggatt/CakeHole/main/automated_install.sh) | sudo bash
+curl -sSL https://raw.githubusercontent.com/rhit-hoggatt/CakeHole/main/automated_install.sh | sudo bash
 ```
 
 ## Features

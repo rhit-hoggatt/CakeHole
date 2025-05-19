@@ -1,16 +1,14 @@
 #!/bin/bash
 
 # CakeHole Installation Script
-# Designed to be run via: curl -sSL https://your-repo-url/raw/main/install | sudo bash
 
 # --- Configuration ---
-# !!! IMPORTANT: Replace with your project's details !!!
 readonly PROJECT_NAME="cakehole"
-readonly REPO_URL="https://github.com/YOUR_USERNAME/YOUR_REPONAME.git" # !!! REPLACE THIS !!!
+readonly REPO_URL="https://github.com/rhit-hoggatt/CakeHole.git"
 
 # Relative paths within your repository
-readonly SERVER_BINARY_REL_PATH="releases/server"
-readonly WEB_SERVER_DIR_REL_PATH="web" # Assumes your Node.js server.js is in a 'web' subdirectory
+readonly SERVER_BINARY_REL_PATH="releases/v1.0/server"
+readonly WEB_SERVER_DIR_REL_PATH="web"
 
 # Installation directory
 readonly INSTALL_BASE_DIR="/opt"

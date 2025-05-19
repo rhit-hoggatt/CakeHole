@@ -1,15 +1,16 @@
 #!/bin/bash
 
-# CakeHole Service Setup Script
-# Installs C dependencies, Node.js via NVM, fetches the repository, and sets up systemd services.
-# Designed to be run via: curl -sSL <URL_TO_THIS_SCRIPT> | sudo bash
+# CakeHole Universal Installation Script
+# Installs C dependencies, Node.js via NVM, fetches the repository,
+# detects architecture for the C server binary, and sets up systemd services.
+# Designed to be run via: curl -sSL https://raw.githubusercontent.com/rhit-hoggatt/CakeHole/main/automated_install.sh | sudo bash
 
 # --- Configuration ---
 readonly PROJECT_NAME="cakehole"
 readonly REPO_URL="https://github.com/rhit-hoggatt/CakeHole.git" # Your repository URL
 
-# Relative paths within your repository
-readonly SERVER_BINARY_REL_PATH="releases/v1.0/server/server"
+# Base path for server binaries - architecture will be appended
+readonly SERVER_BINARY_BASE_PATH="releases/v1.0" # e.g., releases/v1.0/x86/server/server
 readonly WEB_SERVER_DIR_REL_PATH="web" # Assumes your Node.js server.js is in a 'web' subdirectory
 
 # Installation directory
@@ -26,6 +27,7 @@ readonly NODE_VERSION="22"
 # --- Global Variables ---
 NODE_EXEC_PATH=""
 NPM_EXEC_PATH=""
+SERVER_BINARY_REL_PATH="" # Will be set based on architecture
 
 # --- Helper Functions ---
 
@@ -47,6 +49,27 @@ check_root() {
   info "Root privileges confirmed."
 }
 
+# Detect system architecture and set server binary path
+set_architecture_specific_paths() {
+  local arch
+  arch=$(uname -m)
+  info "Detected system architecture: $arch"
+
+  if [[ "$arch" == "x86_64" ]]; then
+    SERVER_BINARY_REL_PATH="$SERVER_BINARY_BASE_PATH/x86/server/server"
+  elif [[ "$arch" == "armv7l" || "$arch" == "armhf" || "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+    # Consolidating common ARM architectures. Ensure your 'arm' binary supports these.
+    # If you have separate armhf vs aarch64 binaries, you'll need more specific checks.
+    SERVER_BINARY_REL_PATH="$SERVER_BINARY_BASE_PATH/arm/server/server"
+  else
+    error "Unsupported architecture: $arch. Cannot determine C server binary path."
+    error "Please check if a pre-compiled binary is available for your system or consider compiling from source."
+    exit 1
+  fi
+  info "C server binary relative path set to: $SERVER_BINARY_REL_PATH"
+}
+
+
 # Install essential base dependencies including C libraries, git, and curl
 install_base_dependencies() {
   info "Checking and installing base dependencies (git, curl, C libraries)..."
@@ -63,9 +86,6 @@ install_base_dependencies() {
   fi
 
   # Add C library development packages
-  # For libmicrohttpd. Debian/Ubuntu typically use libmicrohttpd-dev
-  # For ldns. Debian/Ubuntu typically use libldns-dev
-  # dpkg -s <package_name> &> /dev/null checks if a package is installed
   if ! dpkg -s libmicrohttpd-dev &> /dev/null; then
     packages_to_install+=("libmicrohttpd-dev")
   fi
@@ -77,16 +97,14 @@ install_base_dependencies() {
     info "Updating package lists..."
     if ! apt-get update -y; then
       error "Failed to update package lists. Check your internet connection and repository configuration."
-      # It's possible apt-get update itself fails due to misconfiguration, but we'll proceed to try installing.
     fi
     info "Attempting to install missing dependencies: ${packages_to_install[*]}"
-    # Loop and install one by one to get better error messages if one fails
     local all_successful=true
     for pkg in "${packages_to_install[@]}"; do
         info "Installing $pkg..."
         if ! apt-get install -y "$pkg"; then
             error "Failed to install $pkg. Please check for errors and try installing it manually."
-            all_successful=false # Mark as failed but continue trying others
+            all_successful=false
         else
             info "$pkg installed successfully."
         fi
@@ -94,13 +112,11 @@ install_base_dependencies() {
 
     if ! $all_successful; then
         error "One or more base dependencies failed to install. The C server might not run correctly."
-        # Decide if this should be a fatal error for the script
-        # exit 1; 
     else
         info "All attempted base dependencies installed successfully or were already present."
     fi
   else
-    info "Base dependencies (git, curl, libmicrohttpd-dev, libldns-dev) are already installed or were not in the explicit check list."
+    info "Base dependencies (git, curl, libmicrohttpd-dev, libldns-dev) appear to be already installed."
   fi
 }
 
@@ -175,7 +191,7 @@ setup_repository() {
         if git stash push -u -m "cakehole-setup-script-stash-$(date +%s)"; then
             info "Stashed local changes."
         else
-            info "No local changes to stash or failed to stash." # This case might indicate an error with git stash itself
+            info "No local changes to stash or failed to stash."
         fi
     else
         info "No local changes to stash."
@@ -199,7 +215,7 @@ setup_repository() {
         git stash pop || info "Stash pop failed after successful pull, resolve manually if needed."
     fi
 
-    if [ "$PWD" != "$(dirname "$0")" ] && [ -n "$OLDPWD" ] && [ "$OLDPWD" != "$PWD" ]; then # Check OLDPWD properly
+    if [ "$PWD" != "$(dirname "$0")" ] && [ -n "$OLDPWD" ] && [ "$OLDPWD" != "$PWD" ]; then 
         cd "$OLDPWD" || { error "Failed to cd back to original directory from $PWD (OLDPWD: $OLDPWD)"; exit 1; }
     fi
   else
@@ -216,12 +232,14 @@ setup_repository() {
 
 # Create and enable systemd service for the DNS server
 create_dns_service() {
-  local server_binary_abs_path="$1"
+  # SERVER_BINARY_REL_PATH is now global and set by set_architecture_specific_paths
+  local server_binary_abs_path="$INSTALL_DIR/$SERVER_BINARY_REL_PATH"
   local dns_working_dir
-  dns_working_dir=$(dirname "$server_binary_abs_path") # This will be /opt/cakehole/releases/v1.0/server/
+  dns_working_dir=$(dirname "$server_binary_abs_path") 
 
   if [ ! -f "$server_binary_abs_path" ]; then
     error "DNS server binary not found at $server_binary_abs_path"
+    error "This could be due to an unsupported architecture or an issue with the repository structure."
     return 1
   fi
   if [ ! -x "$server_binary_abs_path" ]; then
@@ -309,6 +327,8 @@ EOF
 # --- Main Script Execution ---
 main() {
   check_root
+  set_architecture_specific_paths # Determine SERVER_BINARY_REL_PATH early
+  
   install_base_dependencies 
 
   if ! install_node; then 
@@ -322,27 +342,21 @@ main() {
   fi
 
   setup_repository
-
-  local final_server_binary="$INSTALL_DIR/$SERVER_BINARY_REL_PATH"
+  
+  # SERVER_BINARY_REL_PATH is now set globally by set_architecture_specific_paths
+  local final_server_binary_path="$INSTALL_DIR/$SERVER_BINARY_REL_PATH" 
   local final_web_server_dir="$INSTALL_DIR/$WEB_SERVER_DIR_REL_PATH"
   
-  # Determine the working directory for the C server based on its binary location
   local c_server_working_dir
-  c_server_working_dir=$(dirname "$final_server_binary") # This is /opt/cakehole/releases/v1.0/server/
+  c_server_working_dir=$(dirname "$final_server_binary_path")
 
-  # *** ADDED: Ensure the adlists/listdata directory exists ***
-  # The C server expects 'adlists/listdata' relative to its working directory.
   local adlist_data_path="$c_server_working_dir/adlists/listdata"
   info "Ensuring adlist data directory exists: $adlist_data_path"
   if mkdir -p "$adlist_data_path"; then
     info "Directory $adlist_data_path ensured."
   else
     error "Failed to create directory $adlist_data_path. The C server might fail."
-    # Decide if this should be a fatal error
-    # exit 1;
   fi
-  # It seems 'adlists/metadata/data.txt' is already present, so 'adlists/metadata' should also exist.
-  # We can also ensure it:
   local adlist_metadata_path="$c_server_working_dir/adlists/metadata"
   info "Ensuring adlist metadata directory exists: $adlist_metadata_path"
   if mkdir -p "$adlist_metadata_path"; then
@@ -351,8 +365,17 @@ main() {
       error "Failed to create directory $adlist_metadata_path."
   fi
 
+  # Ensure the parent directory for the user data file exists if it's different
+  # Example: if password file is in $c_server_working_dir/userdata/password.txt
+  local user_data_parent_dir="$c_server_working_dir/userdata" # ADJUST THIS PATH if your password file is in a subdir
+  info "Ensuring user data parent directory exists: $user_data_parent_dir"
+  if mkdir -p "$user_data_parent_dir"; then
+      info "Directory $user_data_parent_dir ensured."
+  else
+      error "Failed to create directory $user_data_parent_dir. Password file operations might fail."
+  fi
 
-  # Change to the main installation directory for context if any sub-scripts from the repo need it.
+
   if [ "$PWD" != "$INSTALL_DIR" ]; then
     cd "$INSTALL_DIR" || { error "Failed to change directory to $INSTALL_DIR. Aborting."; exit 1; }
   fi
@@ -374,7 +397,8 @@ main() {
     info "No package.json found in $final_web_server_dir, skipping npm install."
   fi
 
-  if ! create_dns_service "$final_server_binary"; then
+  # Pass the dynamically determined absolute binary path to create_dns_service
+  if ! create_dns_service; then # No longer needs argument, uses global SERVER_BINARY_REL_PATH
     error "DNS service creation failed. Please check logs."
   fi
 
@@ -385,6 +409,7 @@ main() {
   info "--------------------------------------------------------------------"
   info "CakeHole ($PROJECT_NAME) setup and service installation complete!"
   info "--------------------------------------------------------------------"
+  # ... (rest of the info messages from previous script)
   info "Services should now be enabled and (re)started."
   info "To check service status:"
   info "  sudo systemctl status $SERVICE_NAME_DNS"

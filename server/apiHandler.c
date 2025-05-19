@@ -1212,6 +1212,13 @@ void* handleAPIs(void* arg) {
         fprintf(stderr, "Failed to reload local DNS cache\n");
         exit(EXIT_FAILURE);
     }
+
+    int adlistsCheck = loadAdlistsFromFile();
+    if (adlistsCheck != 0) {
+        fprintf(stderr, "Failed to load adlists from file\n");
+        exit(EXIT_FAILURE);
+    }
+
     int adCheck = add_addlists();
     if (adCheck != 0) {
         fprintf(stderr, "Failed to add adlists\n");

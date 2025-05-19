@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CakeHole Service Setup Script
-# Installs Node.js via NVM, fetches the repository, and sets up systemd services.
+# Installs C dependencies, Node.js via NVM, fetches the repository, and sets up systemd services.
 # Designed to be run via: curl -sSL <URL_TO_THIS_SCRIPT> | sudo bash
 
 # --- Configuration ---
@@ -47,68 +47,84 @@ check_root() {
   info "Root privileges confirmed."
 }
 
-# Install essential base dependencies like git and curl
+# Install essential base dependencies including C libraries, git, and curl
 install_base_dependencies() {
-  info "Checking and installing base dependencies (git, curl)..."
+  info "Checking and installing base dependencies (git, curl, C libraries)..."
   local packages_to_install=()
+  
+  # Check for git
   if ! command -v git &> /dev/null; then
     packages_to_install+=("git")
   fi
+  
+  # Check for curl
   if ! command -v curl &> /dev/null; then
     packages_to_install+=("curl")
+  fi
+
+  # Add C library development packages
+  # For libmicrohttpd. Debian/Ubuntu typically use libmicrohttpd-dev
+  # For ldns. Debian/Ubuntu typically use libldns-dev
+  # dpkg -s <package_name> &> /dev/null checks if a package is installed
+  if ! dpkg -s libmicrohttpd-dev &> /dev/null; then
+    packages_to_install+=("libmicrohttpd-dev")
+  fi
+  if ! dpkg -s libldns-dev &> /dev/null; then
+    packages_to_install+=("libldns-dev")
   fi
 
   if [ ${#packages_to_install[@]} -gt 0 ]; then
     info "Updating package lists..."
     if ! apt-get update -y; then
       error "Failed to update package lists. Check your internet connection and repository configuration."
-      exit 1
+      # It's possible apt-get update itself fails due to misconfiguration, but we'll proceed to try installing.
     fi
-    info "Installing missing dependencies: ${packages_to_install[*]}"
-    if ! apt-get install -y "${packages_to_install[@]}"; then
-      error "Failed to install base dependencies. Please install them manually and try again."
-      exit 1
+    info "Attempting to install missing dependencies: ${packages_to_install[*]}"
+    # Loop and install one by one to get better error messages if one fails
+    local all_successful=true
+    for pkg in "${packages_to_install[@]}"; do
+        info "Installing $pkg..."
+        if ! apt-get install -y "$pkg"; then
+            error "Failed to install $pkg. Please check for errors and try installing it manually."
+            all_successful=false # Mark as failed but continue trying others
+        else
+            info "$pkg installed successfully."
+        fi
+    done
+
+    if ! $all_successful; then
+        error "One or more base dependencies failed to install. The C server might not run correctly."
+        # Decide if this should be a fatal error for the script
+        # exit 1; 
+    else
+        info "All attempted base dependencies installed successfully or were already present."
     fi
-    info "Base dependencies installed successfully."
   else
-    info "Base dependencies (git, curl) are already installed."
+    info "Base dependencies (git, curl, libmicrohttpd-dev, libldns-dev) are already installed or were not in the explicit check list."
   fi
 }
 
 # Install Node.js using NVM (Node Version Manager)
 install_node() {
   info "Installing Node.js v$NODE_VERSION using NVM..."
-  # NVM installation script might try to modify shell rc files.
-  # We need to ensure NVM environment is sourced for *this script's* execution.
-  # Since this script is run as root, NVM will be installed for the root user.
-  export NVM_DIR="$HOME/.nvm" # Standard NVM directory for the current user (root in this case)
+  export NVM_DIR="$HOME/.nvm" 
   
-  # Download and execute NVM install script
-  # Using a specific stable version of NVM installer for consistency
   if curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash; then
     info "NVM installed or updated."
   else
     error "Failed to download or run NVM install script."
-    return 1 # Use return for functions, exit for script termination
+    return 1
   fi
 
-  # Source NVM script to make nvm command available
-  # This ensures NVM is available for the current script execution.
-  # The NVM install script usually adds this to .bashrc, but we need it now.
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
   [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-  # Check if nvm command is available
   if ! command -v nvm &> /dev/null; then
     error "NVM command not found after installation. Sourcing NVM might have failed."
-    error "Please try sourcing NVM manually in your shell and re-running parts of the script if needed:"
-    error "  export NVM_DIR=\"\$([ -z \"\$XDG_CONFIG_HOME\" ] && printf %s \"\$HOME/.nvm\" || printf %s \"\$XDG_CONFIG_HOME/nvm\")\""
-    error "  [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\""
     return 1
   fi
   info "NVM command is available."
   
-  # Install the specified Node.js version
   if nvm install "$NODE_VERSION"; then
     info "Node.js v$NODE_VERSION installed successfully."
   else
@@ -116,38 +132,31 @@ install_node() {
     return 1
   fi
   
-  nvm alias default "$NODE_VERSION" # Set default node version for the NVM instance
-  nvm use default # Use the installed version for the current session
+  nvm alias default "$NODE_VERSION" 
+  nvm use default 
 
-  # Get the absolute path to the installed Node executable
-  # This is crucial for systemd service files which don't inherit shell environments easily.
-  NODE_EXEC_PATH=$(nvm_find_node_path "$NODE_VERSION") # nvm_find_node_path is an internal nvm function
+  NODE_EXEC_PATH=$(nvm_find_node_path "$NODE_VERSION") 
   if [ -z "$NODE_EXEC_PATH" ] || [ ! -f "$NODE_EXEC_PATH" ]; then
-      # Fallback if nvm_find_node_path isn't available or fails
-      NODE_EXEC_PATH=$(command -v node) # Tries to get from current PATH after nvm use
+      NODE_EXEC_PATH=$(command -v node) 
       if [ -z "$NODE_EXEC_PATH" ] || [ ! -f "$NODE_EXEC_PATH" ]; then
-          # More robust find if 'which node' fails in some contexts
           NODE_EXEC_PATH=$(find "$NVM_DIR/versions/node" -path "*/v$NODE_VERSION.*/bin/node" -type f 2>/dev/null | head -n 1)
       fi
   fi
 
   if [ -z "$NODE_EXEC_PATH" ] || [ ! -f "$NODE_EXEC_PATH" ]; then
     error "Could not determine the absolute path to the Node.js v$NODE_VERSION executable."
-    error "NVM_DIR is $NVM_DIR. Searched for node under versions/node/v$NODE_VERSION.*/bin/node"
     return 1
   fi
   info "Node.js executable path set to: $NODE_EXEC_PATH"
   
-  # Get path for NPM
   NPM_EXEC_PATH="$(dirname "$NODE_EXEC_PATH")/npm"
   if [ ! -f "$NPM_EXEC_PATH" ]; then
       error "Could not determine the absolute path to npm. Expected at $(dirname "$NODE_EXEC_PATH")/npm"
-      NPM_EXEC_PATH="" # Ensure it's empty if not found
+      NPM_EXEC_PATH="" 
       return 1
   fi
   info "NPM executable path set to: $NPM_EXEC_PATH"
   
-  # Verify Node and npm versions
   "$NODE_EXEC_PATH" -v
   "$NPM_EXEC_PATH" -v
 
@@ -162,13 +171,11 @@ setup_repository() {
   if [ -d "$INSTALL_DIR/.git" ]; then
     info "Existing installation found in $INSTALL_DIR. Attempting to update..."
     cd "$INSTALL_DIR" || { error "Failed to cd into $INSTALL_DIR"; exit 1; }
-    # Stash any local changes to avoid pull conflicts, then pull
-    # Only stash if there are changes to stash
     if ! git diff --quiet || ! git diff --cached --quiet; then
         if git stash push -u -m "cakehole-setup-script-stash-$(date +%s)"; then
             info "Stashed local changes."
         else
-            info "No local changes to stash or failed to stash."
+            info "No local changes to stash or failed to stash." # This case might indicate an error with git stash itself
         fi
     else
         info "No local changes to stash."
@@ -182,20 +189,17 @@ setup_repository() {
           info "Repository updated successfully (with merge)."
       else
           error "Failed to update repository even with a standard pull. Please check $INSTALL_DIR for conflicts."
-          # Attempt to pop the stash if one was created by this script and pull failed
           if git stash list | grep -q "cakehole-setup-script-stash"; then
               git stash pop || info "No stash to pop or stash pop failed after failed pull."
           fi
-          exit 1 # Exit if pull fails
+          exit 1 
       fi
     fi
-    # Attempt to pop the stash if one was created by this script
     if git stash list | grep -q "cakehole-setup-script-stash"; then
         git stash pop || info "Stash pop failed after successful pull, resolve manually if needed."
     fi
 
-    # Ensure we cd back to the original directory if the script was not started from $INSTALL_DIR
-    if [ "$PWD" != "$(dirname "$0")" ] && [ -n "$OLDPWD" ] && [ "$OLDPWD" != "$PWD" ]; then
+    if [ "$PWD" != "$(dirname "$0")" ] && [ -n "$OLDPWD" ] && [ "$OLDPWD" != "$PWD" ]; then # Check OLDPWD properly
         cd "$OLDPWD" || { error "Failed to cd back to original directory from $PWD (OLDPWD: $OLDPWD)"; exit 1; }
     fi
   else
@@ -214,7 +218,7 @@ setup_repository() {
 create_dns_service() {
   local server_binary_abs_path="$1"
   local dns_working_dir
-  dns_working_dir=$(dirname "$server_binary_abs_path")
+  dns_working_dir=$(dirname "$server_binary_abs_path") # This will be /opt/cakehole/releases/v1.0/server/
 
   if [ ! -f "$server_binary_abs_path" ]; then
     error "DNS server binary not found at $server_binary_abs_path"
@@ -260,7 +264,6 @@ EOF
 # Create and enable systemd service for the Web server
 create_web_service() {
   local web_server_abs_dir="$1" 
-  # NODE_EXEC_PATH is now a global variable set by install_node
 
   if [ ! -d "$web_server_abs_dir" ]; then
     error "Web server directory not found at $web_server_abs_dir"
@@ -287,7 +290,6 @@ WorkingDirectory=$web_server_abs_dir
 ExecStart=$NODE_EXEC_PATH server.js
 Restart=on-failure
 RestartSec=5
-# Environment=NODE_ENV=production # Optional: for production Node.js apps
 
 [Install]
 WantedBy=multi-user.target
@@ -307,14 +309,13 @@ EOF
 # --- Main Script Execution ---
 main() {
   check_root
-  install_base_dependencies # Ensures git and curl are present
+  install_base_dependencies 
 
-  if ! install_node; then # This will install NVM, Node, NPM and set NODE_EXEC_PATH, NPM_EXEC_PATH
+  if ! install_node; then 
     error "Node.js installation failed. Aborting."
     exit 1
   fi
   
-  # Verify paths were set by install_node
   if [ -z "$NODE_EXEC_PATH" ] || [ -z "$NPM_EXEC_PATH" ]; then
       error "NODE_EXEC_PATH or NPM_EXEC_PATH was not set by install_node. Aborting."
       exit 1
@@ -324,20 +325,44 @@ main() {
 
   local final_server_binary="$INSTALL_DIR/$SERVER_BINARY_REL_PATH"
   local final_web_server_dir="$INSTALL_DIR/$WEB_SERVER_DIR_REL_PATH"
+  
+  # Determine the working directory for the C server based on its binary location
+  local c_server_working_dir
+  c_server_working_dir=$(dirname "$final_server_binary") # This is /opt/cakehole/releases/v1.0/server/
 
-  # Change to the installation directory for context if any sub-scripts from the repo need it.
+  # *** ADDED: Ensure the adlists/listdata directory exists ***
+  # The C server expects 'adlists/listdata' relative to its working directory.
+  local adlist_data_path="$c_server_working_dir/adlists/listdata"
+  info "Ensuring adlist data directory exists: $adlist_data_path"
+  if mkdir -p "$adlist_data_path"; then
+    info "Directory $adlist_data_path ensured."
+  else
+    error "Failed to create directory $adlist_data_path. The C server might fail."
+    # Decide if this should be a fatal error
+    # exit 1;
+  fi
+  # It seems 'adlists/metadata/data.txt' is already present, so 'adlists/metadata' should also exist.
+  # We can also ensure it:
+  local adlist_metadata_path="$c_server_working_dir/adlists/metadata"
+  info "Ensuring adlist metadata directory exists: $adlist_metadata_path"
+  if mkdir -p "$adlist_metadata_path"; then
+      info "Directory $adlist_metadata_path ensured."
+  else
+      error "Failed to create directory $adlist_metadata_path."
+  fi
+
+
+  # Change to the main installation directory for context if any sub-scripts from the repo need it.
   if [ "$PWD" != "$INSTALL_DIR" ]; then
     cd "$INSTALL_DIR" || { error "Failed to change directory to $INSTALL_DIR. Aborting."; exit 1; }
   fi
   
-  # Install npm dependencies for the web server if package.json exists
   if [ -f "$final_web_server_dir/package.json" ]; then
     info "Found package.json in $final_web_server_dir. Running npm install..."
     if [ ! -d "$final_web_server_dir" ]; then
         error "Web server directory $final_web_server_dir does not exist. Cannot run npm install."
     else
         pushd "$final_web_server_dir" > /dev/null || { error "Failed to cd to $final_web_server_dir"; exit 1; }
-        # Use the globally set NPM_EXEC_PATH
         if "$NPM_EXEC_PATH" install --omit=dev; then 
           info "npm install completed successfully in $final_web_server_dir."
         else
@@ -353,7 +378,6 @@ main() {
     error "DNS service creation failed. Please check logs."
   fi
 
-  # Pass NODE_EXEC_PATH to create_web_service, though it's global, explicit is fine too
   if ! create_web_service "$final_web_server_dir"; then 
     error "Web service creation failed. Please check logs."
   fi

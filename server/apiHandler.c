@@ -651,7 +651,7 @@ void printHex(const unsigned char* data, size_t size) {
 }
 
 int handleLoginPassData(const char* user, const char* pass) {
-    FILE* file = fopen("adlists/metadata/data.txt", "r");
+    FILE* file = fopen("adlists/metadata/data.txt", "r+");
     if (!file) {
         perror("Failed to open data file");
         return -1;
@@ -659,65 +659,67 @@ int handleLoginPassData(const char* user, const char* pass) {
 
     char line[256];
     if (fgets(line, sizeof(line), file)) {
-        char storedUser[256], storedSaltHex[SALT_SIZE * 2 + 1], storedHashHex[HASH_SIZE * 2 + 1];
-        if (sscanf(line, "%255s %32s %128s", storedUser, storedSaltHex, storedHashHex) == 3) {
-            if (strcmp(user, storedUser) == 0) {
-            unsigned char storedSalt[SALT_SIZE];
-            unsigned char storedHash[HASH_SIZE];
-            for (size_t i = 0; i < SALT_SIZE; i++) {
-                sscanf(&storedSaltHex[i * 2], "%2hhx", &storedSalt[i]);
-            }
-            for (size_t i = 0; i < HASH_SIZE; i++) {
-                sscanf(&storedHashHex[i * 2], "%2hhx", &storedHash[i]);
-            }
+        // Check if the first line is empty or only whitespace
+        char* p = line;
+        while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
+        if (*p == '\0') {
+            // First line is empty, set login data
+            unsigned char salt[SALT_SIZE];
+            unsigned char hash[HASH_SIZE];
 
-            unsigned char computedHash[HASH_SIZE];
-            if (hashPassword(pass, storedSalt, SALT_SIZE, computedHash) != 0) {
+            if (generateSalt(salt, SALT_SIZE) != 0) {
+                fclose(file);
+                return -1;
+            }
+            if (hashPassword(pass, salt, SALT_SIZE, hash) != 0) {
                 fclose(file);
                 return -1;
             }
 
-            if (memcmp(computedHash, storedHash, HASH_SIZE) == 0) {
-                fclose(file);
-                return 0; // Valid credentials
-            } else {
-                fclose(file);
-                return -1; // Invalid password
+            // Move to the beginning and overwrite the first line
+            fseek(file, 0, SEEK_SET);
+            fprintf(file, "%s ", user);
+            for (size_t i = 0; i < SALT_SIZE; i++) {
+                fprintf(file, "%02x", salt[i]);
             }
+            fprintf(file, " ");
+            for (size_t i = 0; i < HASH_SIZE; i++) {
+                fprintf(file, "%02x", hash[i]);
+            }
+            fprintf(file, "\n");
+            fflush(file);
+            fclose(file);
+            return 0;
+        } else {
+            // First line is not empty, check credentials as before
+            char storedUser[256], storedSaltHex[SALT_SIZE * 2 + 1], storedHashHex[HASH_SIZE * 2 + 1];
+            if (sscanf(line, "%255s %32s %128s", storedUser, storedSaltHex, storedHashHex) == 3) {
+                if (strcmp(user, storedUser) == 0) {
+                    unsigned char storedSalt[SALT_SIZE];
+                    unsigned char storedHash[HASH_SIZE];
+                    for (size_t i = 0; i < SALT_SIZE; i++) {
+                        sscanf(&storedSaltHex[i * 2], "%2hhx", &storedSalt[i]);
+                    }
+                    for (size_t i = 0; i < HASH_SIZE; i++) {
+                        sscanf(&storedHashHex[i * 2], "%2hhx", &storedHash[i]);
+                    }
+
+                    unsigned char computedHash[HASH_SIZE];
+                    if (hashPassword(pass, storedSalt, SALT_SIZE, computedHash) != 0) {
+                        fclose(file);
+                        return -1;
+                    }
+
+                    if (memcmp(computedHash, storedHash, HASH_SIZE) == 0) {
+                        fclose(file);
+                        return 0; // Valid credentials
+                    } else {
+                        fclose(file);
+                        return -1; // Invalid password
+                    }
+                }
             }
         }
-    } else {
-        unsigned char salt[SALT_SIZE];
-        unsigned char hash[HASH_SIZE];
-
-        if (generateSalt(salt, SALT_SIZE) != 0) {
-            fclose(file);
-            return -1;
-        }
-
-        if (hashPassword(pass, salt, SALT_SIZE, hash) != 0) {
-            fclose(file);
-            return -1;
-        }
-
-        freopen("adlists/metadata/data.txt", "w", file);
-        if (!file) {
-            perror("Failed to reopen data file for writing");
-            return -1;
-        }
-
-        fprintf(file, "%s ", user);
-        for (size_t i = 0; i < SALT_SIZE; i++) {
-            fprintf(file, "%02x", salt[i]);
-        }
-        fprintf(file, " ");
-        for (size_t i = 0; i < HASH_SIZE; i++) {
-            fprintf(file, "%02x", hash[i]);
-        }
-        fprintf(file, "\n");
-
-        fclose(file);
-        return 0;
     }
 
     fclose(file);

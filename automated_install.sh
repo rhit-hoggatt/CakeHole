@@ -92,6 +92,9 @@ install_base_dependencies() {
   if ! dpkg -s libldns-dev &> /dev/null; then
     packages_to_install+=("libldns-dev")
   fi
+  if ! dpkg -s ufw &> /dev/null; then
+    packages_to_install+=("ufw")
+  fi
 
   if [ ${#packages_to_install[@]} -gt 0 ]; then
     info "Updating package lists..."
@@ -118,6 +121,41 @@ install_base_dependencies() {
   else
     info "Base dependencies (git, curl, libmicrohttpd-dev, libldns-dev) appear to be already installed."
   fi
+
+    # Check if ufw is installed and enable it
+    if command -v ufw &> /dev/null; then
+        info "UFW is installed. Configuring firewall rules..."
+
+        # Allow DNS (UDP 53) inbound
+        if ufw allow 53/udp; then
+            info "Allowed UDP traffic on port 53 (DNS)."
+        else
+            error "Failed to allow UDP traffic on port 53."
+        fi
+
+        # Allow web traffic (TCP 3333) inbound
+        if ufw allow 3333/tcp; then
+            info "Allowed TCP traffic on port 3333 (Web UI)."
+        else
+            error "Failed to allow TCP traffic on port 3333."
+        fi
+
+        # Allow web traffic (TCP 3333) outbound
+        if ufw allow out 3333/tcp; then
+            info "Allowed outbound TCP traffic on port 3333."
+        else
+            error "Failed to allow outbound TCP traffic on port 3333."
+        fi
+
+        info "Enabling UFW..."
+        if ufw enable; then
+            info "UFW enabled successfully."
+        else
+            error "Failed to enable UFW. Please check your firewall settings."
+        fi
+    else
+        info "UFW is not installed. Skipping firewall setup."
+    fi
 }
 
 # Install Node.js using NVM (Node Version Manager)

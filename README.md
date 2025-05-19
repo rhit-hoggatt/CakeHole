@@ -10,6 +10,7 @@ This project was developed as a final project for a computer networks class, aim
 ```bash
 curl -sSL https://raw.githubusercontent.com/rhit-hoggatt/CakeHole/main/automated_install.sh | sudo bash
 ```
+*The first login sets the credentials to be used for all subsequent logins
 
 ## Features
 

@@ -651,78 +651,138 @@ void printHex(const unsigned char* data, size_t size) {
 }
 
 int handleLoginPassData(const char* user, const char* pass) {
-    FILE* file = fopen("adlists/metadata/data.txt", "r+");
+    FILE* file = fopen("adlists/metadata/data.txt", "r");
     if (!file) {
         perror("Failed to open data file");
         return -1;
     }
 
-    char line[256];
-    if (fgets(line, sizeof(line), file)) {
-        // Check if the first line is empty or only whitespace
-        char* p = line;
-        while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
-        if (*p == '\0') {
-            // First line is empty, set login data
-            unsigned char salt[SALT_SIZE];
-            unsigned char hash[HASH_SIZE];
-
-            if (generateSalt(salt, SALT_SIZE) != 0) {
-                fclose(file);
-                return -1;
-            }
-            if (hashPassword(pass, salt, SALT_SIZE, hash) != 0) {
-                fclose(file);
-                return -1;
-            }
-
-            // Move to the beginning and overwrite the first line
-            fseek(file, 0, SEEK_SET);
-            fprintf(file, "%s ", user);
-            for (size_t i = 0; i < SALT_SIZE; i++) {
-                fprintf(file, "%02x", salt[i]);
-            }
-            fprintf(file, " ");
-            for (size_t i = 0; i < HASH_SIZE; i++) {
-                fprintf(file, "%02x", hash[i]);
-            }
-            fprintf(file, "\n");
-            fflush(file);
+    // Read the entire file into memory
+    char** lines = NULL;
+    size_t numLines = 0;
+    char line[1024];
+    while (fgets(line, sizeof(line), file)) {
+        char* copy = strdup(line);
+        if (!copy) {
+            perror("strdup failed");
             fclose(file);
-            return 0;
+            // Free any previously allocated lines
+            for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+            free(lines);
+            return -1;
+        }
+        char** newLines = realloc(lines, (numLines + 1) * sizeof(char*));
+        if (!newLines) {
+            perror("realloc failed");
+            free(copy);
+            fclose(file);
+            for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+            free(lines);
+            return -1;
+        }
+        lines = newLines;
+        lines[numLines++] = copy;
+    }
+    fclose(file);
+
+    // Check if the first line is empty or only whitespace
+    int firstLineEmpty = 1;
+    if (numLines > 0) {
+        char* p = lines[0];
+        while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
+        if (*p != '\0') firstLineEmpty = 0;
+    }
+
+    if (numLines == 0 || firstLineEmpty) {
+        // First line is empty, set login data
+        unsigned char salt[SALT_SIZE];
+        unsigned char hash[HASH_SIZE];
+
+        if (generateSalt(salt, SALT_SIZE) != 0) {
+            for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+            free(lines);
+            return -1;
+        }
+        if (hashPassword(pass, salt, SALT_SIZE, hash) != 0) {
+            for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+            free(lines);
+            return -1;
+        }
+
+        // Prepare the new first line
+        char firstLine[1024];
+        int offset = snprintf(firstLine, sizeof(firstLine), "%s ", user);
+        for (size_t i = 0; i < SALT_SIZE; i++)
+            offset += snprintf(firstLine + offset, sizeof(firstLine) - offset, "%02x", salt[i]);
+        offset += snprintf(firstLine + offset, sizeof(firstLine) - offset, " ");
+        for (size_t i = 0; i < HASH_SIZE; i++)
+            offset += snprintf(firstLine + offset, sizeof(firstLine) - offset, "%02x", hash[i]);
+        snprintf(firstLine + offset, sizeof(firstLine) - offset, "\n");
+
+        // Replace or add the first line
+        if (numLines == 0) {
+            char** newLines = realloc(lines, sizeof(char*));
+            if (!newLines) {
+                perror("realloc failed");
+                free(lines);
+                return -1;
+            }
+            lines = newLines;
+            lines[0] = strdup(firstLine);
+            numLines = 1;
         } else {
-            // First line is not empty, check credentials as before
-            char storedUser[256], storedSaltHex[SALT_SIZE * 2 + 1], storedHashHex[HASH_SIZE * 2 + 1];
-            if (sscanf(line, "%255s %32s %128s", storedUser, storedSaltHex, storedHashHex) == 3) {
-                if (strcmp(user, storedUser) == 0) {
-                    unsigned char storedSalt[SALT_SIZE];
-                    unsigned char storedHash[HASH_SIZE];
-                    for (size_t i = 0; i < SALT_SIZE; i++) {
-                        sscanf(&storedSaltHex[i * 2], "%2hhx", &storedSalt[i]);
-                    }
-                    for (size_t i = 0; i < HASH_SIZE; i++) {
-                        sscanf(&storedHashHex[i * 2], "%2hhx", &storedHash[i]);
-                    }
+            free(lines[0]);
+            lines[0] = strdup(firstLine);
+        }
 
-                    unsigned char computedHash[HASH_SIZE];
-                    if (hashPassword(pass, storedSalt, SALT_SIZE, computedHash) != 0) {
-                        fclose(file);
-                        return -1;
-                    }
+        // Write all lines back to the file
+        file = fopen("adlists/metadata/data.txt", "w");
+        if (!file) {
+            perror("Failed to open data file for writing");
+            for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+            free(lines);
+            return -1;
+        }
+        for (size_t i = 0; i < numLines; ++i) fputs(lines[i], file);
+        fclose(file);
 
-                    if (memcmp(computedHash, storedHash, HASH_SIZE) == 0) {
-                        fclose(file);
-                        return 0; // Valid credentials
-                    } else {
-                        fclose(file);
-                        return -1; // Invalid password
-                    }
+        for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+        free(lines);
+        return 0;
+    } else {
+        // First line is not empty, check credentials as before
+        char storedUser[256], storedSaltHex[SALT_SIZE * 2 + 1], storedHashHex[HASH_SIZE * 2 + 1];
+        if (sscanf(lines[0], "%255s %32s %128s", storedUser, storedSaltHex, storedHashHex) == 3) {
+            if (strcmp(user, storedUser) == 0) {
+                unsigned char storedSalt[SALT_SIZE];
+                unsigned char storedHash[HASH_SIZE];
+                for (size_t i = 0; i < SALT_SIZE; i++)
+                    sscanf(&storedSaltHex[i * 2], "%2hhx", &storedSalt[i]);
+                for (size_t i = 0; i < HASH_SIZE; i++)
+                    sscanf(&storedHashHex[i * 2], "%2hhx", &storedHash[i]);
+
+                unsigned char computedHash[HASH_SIZE];
+                if (hashPassword(pass, storedSalt, SALT_SIZE, computedHash) != 0) {
+                    for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+                    free(lines);
+                    return -1;
+                }
+
+                if (memcmp(computedHash, storedHash, HASH_SIZE) == 0) {
+                    for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+                    free(lines);
+                    return 0; // Valid credentials
+                } else {
+                    for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+                    free(lines);
+                    return -1; // Invalid password
                 }
             }
         }
     }
 
-    fclose(file);
+    for (size_t i = 0; i < numLines; ++i) free(lines[i]);
+    free(lines);
     return -1;
 }
 

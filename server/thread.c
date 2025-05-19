@@ -36,28 +36,26 @@ char* getUpstreamDNS() {
         return NULL;
     }
     char line[256];
-    int line_num = 0;
-    char* upstream_dns = NULL;
+    char last_line[256] = {0};
     while (fgets(line, sizeof(line), file)) {
-        line_num++;
-        if (line_num == 3) {
-            // Expecting format: "UPSTREAM *ip here*"
-            char* token = strtok(line, " \t\n");
-            if (token && strcmp(token, "UPSTREAM") == 0) {
-                token = strtok(NULL, " \t\n");
-                if (token) {
-                    upstream_dns = strdup(token);
-                } else {
-                    fprintf(stderr, "No IP found after UPSTREAM in line 3\n");
-                }
-            } else {
-                fprintf(stderr, "Line 3 does not start with UPSTREAM\n");
-            }
-            break;
-        }
+        strncpy(last_line, line, sizeof(last_line) - 1);
+        last_line[sizeof(last_line) - 1] = '\0';
     }
-    if (line_num < 3) {
-        fprintf(stderr, "File does not have at least 3 lines\n");
+    char* upstream_dns = NULL;
+    if (strlen(last_line) > 0) {
+        char* token = strtok(last_line, " \t\n");
+        if (token && strcmp(token, "UPSTREAM") == 0) {
+            token = strtok(NULL, " \t\n");
+            if (token) {
+                upstream_dns = strdup(token);
+            } else {
+                fprintf(stderr, "No IP found after UPSTREAM in last line\n");
+            }
+        } else {
+            fprintf(stderr, "Last line does not start with UPSTREAM\n");
+        }
+    } else {
+        fprintf(stderr, "File is empty or no lines found\n");
     }
     fclose(file);
     pthread_mutex_unlock(&upstream_lock);

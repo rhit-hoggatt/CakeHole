@@ -1,0 +1,5 @@
+https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts enabled
+https://v.firebog.net/hosts/Easylist.txt enabled
+https://blocklistproject.github.io/Lists/phishing.txt enabled
+https://blocklistproject.github.io/Lists/adobe.txt enabled
+https://blocklistproject.github.io/Lists/smart-tv.txt enabled

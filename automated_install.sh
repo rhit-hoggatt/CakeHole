@@ -7,7 +7,7 @@ readonly PROJECT_NAME="cakehole"
 readonly REPO_URL="https://github.com/rhit-hoggatt/CakeHole.git"
 
 # Relative paths within your repository
-readonly SERVER_BINARY_REL_PATH="releases/v1.0/server"
+readonly SERVER_BINARY_REL_PATH="releases/v1.0/server/server"
 readonly WEB_SERVER_DIR_REL_PATH="web"
 
 # Installation directory

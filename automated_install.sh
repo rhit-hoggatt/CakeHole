@@ -70,7 +70,10 @@ setup_repository() {
       error "Failed to update repository. Consider removing $INSTALL_DIR and re-running."
       # Optionally exit: exit 1
     fi
-    cd "$OLDPWD" || { error "Failed to cd back to original directory"; exit 1; }
+    # Ensure we cd back to the original directory if the script was not started from $INSTALL_DIR
+    if [ "$PWD" != "$(dirname "$0")" ] && [ -n "$OLDPWD" ]; then
+        cd "$OLDPWD" || { error "Failed to cd back to original directory"; exit 1; }
+    fi
   else
     info "Cloning CakeHole repository from $REPO_URL into $INSTALL_DIR..."
     # Ensure parent directory exists
@@ -117,8 +120,6 @@ install_node() {
   fi
 
   # Source NVM script to make nvm command available
-  # This might not always work perfectly depending on shell non-interactivity,
-  # but it's the standard way.
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
   [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
@@ -126,7 +127,7 @@ install_node() {
   if ! command -v nvm &> /dev/null; then
     error "NVM command not found after installation. Sourcing NVM might have failed."
     error "Please try sourcing NVM manually in your shell and re-running parts of the script if needed:"
-    error "  export NVM_DIR=\"\$HOME/.nvm\""
+    error "  export NVM_DIR=\"\$([ -z \"\$XDG_CONFIG_HOME\" ] && printf %s \"\$HOME/.nvm\" || printf %s \"\$XDG_CONFIG_HOME/nvm\")\"" # More robust NVM_DIR
     error "  [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\""
     return 1
   fi
@@ -145,17 +146,13 @@ install_node() {
   nvm use default # Use the installed version
 
   # Get the absolute path to the installed Node executable
-  # This is crucial for systemd service files
-  NODE_EXEC_PATH=$(nvm_find_node_path "$NODE_VERSION")
+  NODE_EXEC_PATH=$(nvm_find_node_path "$NODE_VERSION") # nvm_find_node_path is an internal nvm function
   if [ -z "$NODE_EXEC_PATH" ] || [ ! -f "$NODE_EXEC_PATH" ]; then
-      # Fallback if nvm_find_node_path (hypothetical) isn't available or fails
-      NODE_EXEC_PATH=$(command -v node) # Tries to get from current PATH after nvm use
+      NODE_EXEC_PATH=$(command -v node) 
       if [ -z "$NODE_EXEC_PATH" ] || [ ! -f "$NODE_EXEC_PATH" ]; then
-          # More robust find if 'which node' fails in some contexts
           NODE_EXEC_PATH=$(find "$NVM_DIR/versions/node" -path "*/v$NODE_VERSION.*/bin/node" -type f 2>/dev/null | head -n 1)
       fi
   fi
-
 
   if [ -z "$NODE_EXEC_PATH" ] || [ ! -f "$NODE_EXEC_PATH" ]; then
     error "Could not determine the absolute path to the Node.js v$NODE_VERSION executable."
@@ -166,7 +163,6 @@ install_node() {
   
   # Verify Node and npm versions
   "$NODE_EXEC_PATH" -v
-  # NPM path is usually in the same directory as node
   local npm_path
   npm_path="$(dirname "$NODE_EXEC_PATH")/npm"
   "$npm_path" -v
@@ -183,6 +179,8 @@ create_dns_service() {
 
   if [ ! -f "$server_binary_abs_path" ]; then
     error "DNS server binary not found at $server_binary_abs_path"
+    error "Please ensure SERVER_BINARY_REL_PATH in the script correctly points to your server binary relative to the repository root."
+    error "Expected structure: $INSTALL_DIR/$SERVER_BINARY_REL_PATH"
     return 1
   fi
   if [ ! -x "$server_binary_abs_path" ]; then
@@ -193,7 +191,6 @@ create_dns_service() {
         return 1
     fi
   fi
-
 
   info "Creating DNS server service: $SERVICE_NAME_DNS"
   cat > "/etc/systemd/system/$SERVICE_NAME_DNS.service" <<EOF
@@ -282,7 +279,12 @@ main() {
 
   # Change to the installation directory for context if any sub-scripts need it
   # Though for service files, absolute paths are already used.
-  cd "$INSTALL_DIR" || { error "Failed to change directory to $INSTALL_DIR. Aborting."; exit 1; }
+  # This cd is important if setup_repository did a git pull and OLDPWD was not set correctly
+  # (e.g. if the script was executed directly from /)
+  if [ "$PWD" != "$INSTALL_DIR" ]; then
+    cd "$INSTALL_DIR" || { error "Failed to change directory to $INSTALL_DIR. Aborting."; exit 1; }
+  fi
+
 
   if ! install_node; then # install_node sets global NODE_EXEC_PATH
     error "Node.js installation failed. Aborting."
@@ -319,7 +321,7 @@ main() {
   info "  sudo journalctl -u $SERVICE_NAME_DNS -f"
   info "  sudo journalctl -u $SERVICE_NAME_WEB -f"
   info ""
-  info "If you have a web interface, it might be accessible at http://<your_server_ip>:<port>"
+  info "If you have a web interface, it might be accessible at http://<your_server_ip>:3333"
   info "Default web server directory: $final_web_server_dir"
   info "--------------------------------------------------------------------"
 }

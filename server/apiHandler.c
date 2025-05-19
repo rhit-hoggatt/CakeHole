@@ -796,22 +796,43 @@ int addLocalDNSToCache(const char* ip, const char* url, const char* name) {
 }
 
 int setNumThreadsInFile(int numThreads) {
-    FILE* file = fopen("adlists/metadata/data.txt", "r+");
+    FILE* file = fopen("adlists/metadata/data.txt", "r");
     if (!file) {
         perror("Failed to open data.txt");
         return -1;
     }
 
-    char line[256];
-    // Skip the first line (login info)
-    if (!fgets(line, sizeof(line), file)) {
-        fclose(file);
+    // Read all lines into memory
+    char* lines[3] = {NULL, NULL, NULL};
+    char buffer[256];
+    int i = 0;
+    while (i < 3 && fgets(buffer, sizeof(buffer), file)) {
+        lines[i] = strdup(buffer);
+        i++;
+    }
+    fclose(file);
+
+    if (i < 2) { // Not enough lines
+        for (int j = 0; j < i; ++j) free(lines[j]);
         return -1;
     }
-    // Read the second line (thread info)
-    if (fgets(line, sizeof(line), file)) {
-        fseek(file, -strlen(line), SEEK_CUR);
-        fprintf(file, "THREADS %d\n", numThreads);
+
+    // Replace the second line with the new THREADS line
+    char threadsLine[64];
+    snprintf(threadsLine, sizeof(threadsLine), "THREADS %d\n", numThreads);
+    free(lines[1]);
+    lines[1] = strdup(threadsLine);
+
+    // Write all lines back
+    file = fopen("adlists/metadata/data.txt", "w");
+    if (!file) {
+        perror("Failed to open data.txt for writing");
+        for (int j = 0; j < 3; ++j) free(lines[j]);
+        return -1;
+    }
+    for (int j = 0; j < i; ++j) {
+        fputs(lines[j], file);
+        free(lines[j]);
     }
     fclose(file);
     return 0;

@@ -1,0 +1,7 @@
+Failed to start HTTP server: Address already in use
+Upstream DNS: 1.1.1.1
+Upstream DNS: 1.1.1.1
+Started 4 request listeners
+Upstream DNS: 1.1.1.1
+Upstream DNS: 1.1.1.1
+Adding query response: 0.020470

@@ -133,6 +133,13 @@ install_base_dependencies() {
             error "Failed to allow UDP traffic on port 53."
         fi
 
+        # Allow DHCP (UDP 67) inbound - for optional DHCP server
+        if ufw allow 67/udp; then
+            info "Allowed UDP traffic on port 67 (DHCP)."
+        else
+            error "Failed to allow UDP traffic on port 67."
+        fi
+
         # Allow web traffic (TCP 3333) inbound
         if ufw allow 3333/tcp; then
             info "Allowed TCP traffic on port 3333 (Web UI)."

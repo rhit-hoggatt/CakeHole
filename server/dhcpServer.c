@@ -4,13 +4,15 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-
 
 #include "dhcpServer.h"
 
@@ -44,7 +46,7 @@ int mac_str_to_bytes(const char *mac_str, uint8_t *mac) {
   if (!mac_str || !mac)
     return -1;
 
-  int values[6];
+  unsigned int values[6];
   if (sscanf(mac_str, "%x:%x:%x:%x:%x:%x", &values[0], &values[1], &values[2],
              &values[3], &values[4], &values[5]) != 6) {
     // Try alternate format with dashes

@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -pedantic -std=c99 -g -pthread
 LDFLAGS = -lldns -lpthread -lmicrohttpd -lcrypto
 SANITIZE = -fsanitize=address
 TARGET = server
-SRC = server.c cacheSystem.c workQueue.c thread.c apiHandler.c hashmap.c cacheHandler.c runningAvgs.c
+SRC = server.c cacheSystem.c workQueue.c thread.c apiHandler.c hashmap.c cacheHandler.c runningAvgs.c dhcpServer.c
 
 all: $(TARGET)
 

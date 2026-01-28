@@ -708,6 +708,106 @@ app.post('/api/deleteLocalDomain', (req, res) => {
     request.end();
 });
 
+// DHCP API routes
+app.post('/api/addDhcpLease', (req, res) => {
+    const macToSend = req.body.mac;
+    const ipToSend = req.body.ip;
+    const nameToSend = req.body.name;
+
+    const options = {
+        hostname: 'localhost',
+        port: 8081,
+        path: `/addDhcpLease?mac=${encodeURIComponent(macToSend)}&ip=${encodeURIComponent(ipToSend)}&name=${encodeURIComponent(nameToSend)}`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    };
+    const request = http.request(options, (response) => {
+        let data = '';
+
+        response.on('data', (chunk) => {
+            data += chunk;
+        });
+
+        response.on('end', () => {
+            try {
+                const parsedData = JSON.parse(data);
+                res.json(parsedData);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to parse DHCP add response' });
+            }
+        });
+    });
+    request.on('error', (error) => {
+        res.status(500).json({ error: 'Failed to communicate with C server for DHCP add' });
+    });
+    request.end();
+});
+
+app.get('/api/getDhcpLeases', (req, res) => {
+    const options = {
+        hostname: 'localhost',
+        port: 8081,
+        path: '/getDhcpLeases',
+        method: 'GET'
+    };
+    const request = http.request(options, (response) => {
+        let data = '';
+
+        response.on('data', (chunk) => {
+            data += chunk;
+        });
+
+        response.on('end', () => {
+            try {
+                const leases = JSON.parse(data);
+                res.json(leases);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to parse DHCP leases' });
+            }
+        });
+    });
+    request.on('error', (error) => {
+        res.status(500).json({ error: 'Failed to communicate with C server for DHCP leases' });
+    });
+    request.end();
+});
+
+app.post('/api/deleteDhcpLease', (req, res) => {
+    const macToSend = req.body.mac;
+
+    const options = {
+        hostname: 'localhost',
+        port: 8081,
+        path: `/removeDhcpLease?mac=${encodeURIComponent(macToSend)}`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    };
+    const request = http.request(options, (response) => {
+        let data = '';
+
+        response.on('data', (chunk) => {
+            data += chunk;
+        });
+
+        response.on('end', () => {
+            try {
+                const parsedData = JSON.parse(data);
+                res.json(parsedData);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to parse DHCP delete response' });
+            }
+        });
+    });
+    request.on('error', (error) => {
+        res.status(500).json({ error: 'Failed to communicate with C server for DHCP delete' });
+    });
+    request.end();
+});
+
 app.get('/api/getNumThreads', (req, res) => {
     const options = {
         hostname: 'localhost',

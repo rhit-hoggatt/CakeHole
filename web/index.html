@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -13,6 +14,7 @@
             flex-direction: column;
             align-items: center;
         }
+
         .navbar {
             width: 100%;
             background-color: #007bff56;
@@ -21,6 +23,7 @@
             padding: 10px 0;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
+
         .tab-button {
             background-color: #007BFF;
             color: white;
@@ -32,19 +35,25 @@
             border-radius: 5px;
             transition: background-color 0.3s ease;
         }
+
         .tab-button:hover {
             background-color: #0056b3;
         }
+
         .tab-button:focus {
             outline: none;
             background-color: #0056b3;
         }
+
         .tab-content {
             display: none;
         }
+
         #home-tab {
-            display: block; /* Show the home tab by default */
+            display: block;
+            /* Show the home tab by default */
         }
+
         .row {
             display: flex;
             justify-content: center;
@@ -52,12 +61,14 @@
             width: 100%;
             margin: 10px 0;
         }
+
         .container {
             display: flex;
             justify-content: center;
             align-items: center;
             flex-wrap: wrap;
         }
+
         .box {
             min-width: 200px;
             min-height: 50px;
@@ -72,17 +83,20 @@
             flex-direction: column;
             word-break: break-word;
         }
+
         .box h2 {
             margin: 0;
             font-size: 18px;
             color: #333;
         }
+
         .box p {
             margin: 10px 0 0;
             font-size: 24px;
             font-weight: bold;
             color: #007BFF;
         }
+
         button {
             margin: 0px 0px 0px 15px;
             padding: 10px 20px;
@@ -96,12 +110,15 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             transition: background-color 0.3s ease, transform 0.2s ease;
         }
+
         button:hover {
             background-color: #0056b3;
         }
+
         button:active {
             transform: scale(0.98);
         }
+
         .adlists-table {
             width: 80%;
             border-collapse: collapse;
@@ -111,10 +128,13 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
-        .adlists-table th, .adlists-table td {
+
+        .adlists-table th,
+        .adlists-table td {
             padding: 12px 16px;
             text-align: center;
         }
+
         .adlists-table th {
             background-color: #007BFF;
             color: #fff;
@@ -122,25 +142,31 @@
             font-weight: bold;
             border-bottom: 2px solid #0056b3;
         }
+
         .adlists-table tr {
             transition: background-color 0.2s;
         }
+
         .adlists-table tr:nth-child(even) {
             background-color: #e9f2ff;
         }
+
         .adlists-table tr:hover {
             background-color: #d0e7ff;
         }
+
         .adlists-table td {
             font-size: 15px;
             color: #333;
             border-bottom: 1px solid #ccc;
         }
+
         .adlists-table td:last-child {
             border-bottom: none;
         }
     </style>
 </head>
+
 <body>
 
     <div class="navbar">
@@ -148,6 +174,7 @@
         <button class="tab-button" onclick="showTab('adlists')">Adlists</button>
         <button class="tab-button" onclick="showTab('localDNS')">Local DNS</button>
         <button class="tab-button" onclick="showTab('performance')">Performance</button>
+        <button class="tab-button" onclick="showTab('dhcp')">DHCP</button>
         <button class="tab-button" onclick="showTab('terminal')">Terminal</button>
         <button class="tab-button" onclick="restartDNS()" style="margin-left: auto;">Restart DNS Server</button>
         <button class="tab-button" onclick="logout()" style="margin-left: 10px;">Logout</button>
@@ -252,8 +279,10 @@
             <h1>Performance Settings</h1>
         </div>
         <div class="row">
-            <label for="threads" style="font-size:18px; font-weight:bold; margin-right:10px;">Num Query Response Processes:</label>
-            <input type="number" id="threads" min="1" style="width:70px; font-size:18px; padding:5px; border-radius:5px; border:1px solid #ccc;" />
+            <label for="threads" style="font-size:18px; font-weight:bold; margin-right:10px;">Num Query Response
+                Processes:</label>
+            <input type="number" id="threads" min="1"
+                style="width:70px; font-size:18px; padding:5px; border-radius:5px; border:1px solid #ccc;" />
             <button onclick="setNumThreads()" style="margin-left:10px;">Set</button>
             <script>
                 let needsRestart = false;
@@ -289,7 +318,7 @@
                     }
                 }
             </script>
-            
+
         </div>
         <div class="row container">
             <div class="box">
@@ -307,69 +336,72 @@
         </div>
         <div class="row">
             <div class="row">
-            <label for="upstream-dns-input" style="font-size:18px; font-weight:bold; margin-right:10px;">Upstream DNS Server:</label>
-            <select id="upstream-dns-select" style="font-size:16px; padding:5px 10px; border-radius:5px; border:1px solid #ccc; margin-right:10px;">
-                <option value="8.8.8.8">Google (8.8.8.8)</option>
-                <option value="1.1.1.1">Cloudflare (1.1.1.1)</option>
-                <option value="custom">Custom...</option>
-            </select>
-            <input type="text" id="upstream-dns-input" style="width:160px; font-size:16px; padding:5px; border-radius:5px; border:1px solid #ccc; margin-right:10px;" />
-            <button onclick="setUpstreamDNS()">Set</button>
-        </div>
-        <script>
-            async function fetchUpstreamDNS() {
-                try {
-                    const response = await fetch('/api/getUpstreamDNS');
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    const data = await response.json();
-                    const current = data.upstreamDNS;
-                    const select = document.getElementById('upstream-dns-select');
-                    const input = document.getElementById('upstream-dns-input');
-                    if (current === "8.8.8.8" || current === "1.1.1.1") {
-                        select.value = current;
-                        input.value = current;
-                        input.disabled = true;
-                    } else {
-                        select.value = "custom";
-                        input.value = current;
-                        input.disabled = false;
+                <label for="upstream-dns-input" style="font-size:18px; font-weight:bold; margin-right:10px;">Upstream
+                    DNS Server:</label>
+                <select id="upstream-dns-select"
+                    style="font-size:16px; padding:5px 10px; border-radius:5px; border:1px solid #ccc; margin-right:10px;">
+                    <option value="8.8.8.8">Google (8.8.8.8)</option>
+                    <option value="1.1.1.1">Cloudflare (1.1.1.1)</option>
+                    <option value="custom">Custom...</option>
+                </select>
+                <input type="text" id="upstream-dns-input"
+                    style="width:160px; font-size:16px; padding:5px; border-radius:5px; border:1px solid #ccc; margin-right:10px;" />
+                <button onclick="setUpstreamDNS()">Set</button>
+            </div>
+            <script>
+                async function fetchUpstreamDNS() {
+                    try {
+                        const response = await fetch('/api/getUpstreamDNS');
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        const data = await response.json();
+                        const current = data.upstreamDNS;
+                        const select = document.getElementById('upstream-dns-select');
+                        const input = document.getElementById('upstream-dns-input');
+                        if (current === "8.8.8.8" || current === "1.1.1.1") {
+                            select.value = current;
+                            input.value = current;
+                            input.disabled = true;
+                        } else {
+                            select.value = "custom";
+                            input.value = current;
+                            input.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Error fetching upstream DNS:', error);
                     }
-                } catch (error) {
-                    console.error('Error fetching upstream DNS:', error);
                 }
-            }
-            document.getElementById('upstream-dns-select').addEventListener('change', function() {
-                const input = document.getElementById('upstream-dns-input');
-                if (this.value === "custom") {
-                    input.disabled = false;
-                    input.value = "";
-                    input.focus();
-                } else {
-                    input.disabled = true;
-                    input.value = this.value;
+                document.getElementById('upstream-dns-select').addEventListener('change', function () {
+                    const input = document.getElementById('upstream-dns-input');
+                    if (this.value === "custom") {
+                        input.disabled = false;
+                        input.value = "";
+                        input.focus();
+                    } else {
+                        input.disabled = true;
+                        input.value = this.value;
+                    }
+                });
+                async function setUpstreamDNS() {
+                    const select = document.getElementById('upstream-dns-select');
+                    let value = select.value === "custom" ? document.getElementById('upstream-dns-input').value.trim() : select.value;
+                    if (!value) {
+                        alert('Please enter a valid DNS IP.');
+                        return;
+                    }
+                    try {
+                        const response = await fetch('/api/setUpstreamDNS', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ upstreamDNS: value })
+                        });
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        await fetchUpstreamDNS();
+                    } catch (error) {
+                        alert('Error setting upstream DNS: ' + error);
+                    }
                 }
-            });
-            async function setUpstreamDNS() {
-                const select = document.getElementById('upstream-dns-select');
-                let value = select.value === "custom" ? document.getElementById('upstream-dns-input').value.trim() : select.value;
-                if (!value) {
-                    alert('Please enter a valid DNS IP.');
-                    return;
-                }
-                try {
-                    const response = await fetch('/api/setUpstreamDNS', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ upstreamDNS: value })
-                    });
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    await fetchUpstreamDNS();
-                } catch (error) {
-                    alert('Error setting upstream DNS: ' + error);
-                }
-            }
-            fetchUpstreamDNS();
-        </script>
+                fetchUpstreamDNS();
+            </script>
         </div>
     </div>
 
@@ -398,17 +430,145 @@
             </select>
         </div>
     </div>
-    <div id="add-domain-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.3); z-index:1000; align-items:center; justify-content:center;">
-        <div style="background:#fff; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:32px 28px; min-width:320px; display:flex; flex-direction:column; align-items:center;">
+
+    <!-- DHCP Tab -->
+    <div id="dhcp-tab" class="tab-content" style="display: none;">
+        <div class="row">
+            <h1>DHCP Server Management</h1>
+        </div>
+
+        <!-- DHCP Enable/Disable -->
+        <div class="row" style="align-items: center; margin-bottom: 20px;">
+            <label for="dhcp-enabled" style="font-weight: bold; margin-right: 12px; font-size: 18px;">Enable DHCP
+                Server</label>
+            <input type="checkbox" id="dhcp-enabled" style="width: 22px; height: 22px; cursor: pointer;"
+                onchange="toggleDhcp(this.checked)" />
+            <span id="dhcp-enabled-status"
+                style="margin-left: 15px; font-weight: bold; font-size: 14px; padding: 6px 16px; border-radius: 6px; background-color: #dc3545; color: white;">Disabled</span>
+        </div>
+
+        <!-- DHCP Settings Panel -->
+        <div class="row">
+            <div class="box" style="width: 85%; max-width: 900px;">
+                <h2 style="margin-bottom: 18px; color: #007BFF;">DHCP Settings</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: #333;">IP Range
+                            Start:</label>
+                        <input type="text" id="dhcp-range-start" placeholder="192.168.1.100"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: #333;">IP Range
+                            End:</label>
+                        <input type="text" id="dhcp-range-end" placeholder="192.168.1.254"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: #333;">Subnet
+                            Mask:</label>
+                        <input type="text" id="dhcp-subnet" placeholder="255.255.255.0"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label
+                            style="font-weight: bold; display: block; margin-bottom: 6px; color: #333;">Gateway:</label>
+                        <input type="text" id="dhcp-gateway" placeholder="192.168.1.1"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: #333;">DNS
+                            Server:</label>
+                        <input type="text" id="dhcp-dns" placeholder="192.168.1.1"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; color: #333;">Lease
+                            Time:</label>
+                        <select id="dhcp-lease-time"
+                            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box;">
+                            <option value="3600">1 Hour</option>
+                            <option value="14400">4 Hours</option>
+                            <option value="43200">12 Hours</option>
+                            <option value="86400" selected>24 Hours</option>
+                            <option value="604800">1 Week</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button onclick="saveDhcpSettings()" style="background-color: #28a745; padding: 12px 28px;">Save
+                        Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Static Leases Section -->
+        <div class="row" style="margin-top: 25px;">
+            <h2 style="color: #333;">Static DHCP Leases</h2>
+        </div>
+        <div class="row" style="margin-top: 10px;">
+            <button id="add-dhcp-lease-btn" onclick="openAddDhcpModal()">Add Static Lease</button>
+            <button onclick="fetchDhcpLeases()" style="margin-left: 10px; background-color: #6c757d;">Refresh
+                Leases</button>
+        </div>
+        <div class="row">
+            <table class="adlists-table">
+                <thead>
+                    <tr>
+                        <th>MAC Address</th>
+                        <th>IP Address</th>
+                        <th>Hostname</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="dhcp-table-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add DHCP Lease Modal -->
+    <div id="add-dhcp-modal"
+        style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+        <div
+            style="background:#fff; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.2); padding:32px 28px; min-width:360px; display:flex; flex-direction:column; align-items:center;">
+            <h2 style="color:#007BFF; margin-bottom:24px;">Add Static DHCP Lease</h2>
+            <label style="align-self:flex-start; margin-bottom:6px; color:#333; font-weight:bold;">MAC Address:</label>
+            <input id="modal-dhcp-mac" type="text" placeholder="AA:BB:CC:DD:EE:FF"
+                style="width:100%; margin-bottom:16px; padding:12px; border-radius:6px; border:1px solid #ccc; font-size:15px; box-sizing:border-box;">
+            <label style="align-self:flex-start; margin-bottom:6px; color:#333; font-weight:bold;">IP Address:</label>
+            <input id="modal-dhcp-ip" type="text" placeholder="192.168.1.50"
+                style="width:100%; margin-bottom:16px; padding:12px; border-radius:6px; border:1px solid #ccc; font-size:15px; box-sizing:border-box;">
+            <label style="align-self:flex-start; margin-bottom:6px; color:#333; font-weight:bold;">Hostname
+                (optional):</label>
+            <input id="modal-dhcp-name" type="text" placeholder="my-device"
+                style="width:100%; margin-bottom:24px; padding:12px; border-radius:6px; border:1px solid #ccc; font-size:15px; box-sizing:border-box;">
+            <div style="display:flex; width:100%; justify-content:space-between;">
+                <button onclick="closeAddDhcpModal()"
+                    style="background:#6c757d; color:#fff; padding:12px 24px;">Cancel</button>
+                <button onclick="submitAddDhcpLease()" style="background:#007BFF; padding:12px 24px;">Add Lease</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-domain-modal"
+        style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.3); z-index:1000; align-items:center; justify-content:center;">
+        <div
+            style="background:#fff; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.12); padding:32px 28px; min-width:320px; display:flex; flex-direction:column; align-items:center;">
             <h2 style="color:#007BFF; margin-bottom:20px;">Add Local Domain</h2>
             <label style="align-self:flex-start; margin-bottom:4px; color:#333;">Name:</label>
-            <input id="modal-domain-name" type="text" style="width:100%; margin-bottom:12px; padding:10px; border-radius:5px; border:1px solid #ccc; font-size:15px;">
+            <input id="modal-domain-name" type="text"
+                style="width:100%; margin-bottom:12px; padding:10px; border-radius:5px; border:1px solid #ccc; font-size:15px;">
             <label style="align-self:flex-start; margin-bottom:4px; color:#333;">Domain:</label>
-            <input id="modal-domain-domain" type="text" style="width:100%; margin-bottom:12px; padding:10px; border-radius:5px; border:1px solid #ccc; font-size:15px;">
+            <input id="modal-domain-domain" type="text"
+                style="width:100%; margin-bottom:12px; padding:10px; border-radius:5px; border:1px solid #ccc; font-size:15px;">
             <label style="align-self:flex-start; margin-bottom:4px; color:#333;">IP Address:</label>
-            <input id="modal-domain-ip" type="text" style="width:100%; margin-bottom:20px; padding:10px; border-radius:5px; border:1px solid #ccc; font-size:15px;">
+            <input id="modal-domain-ip" type="text"
+                style="width:100%; margin-bottom:20px; padding:10px; border-radius:5px; border:1px solid #ccc; font-size:15px;">
             <div style="display:flex; width:100%; justify-content:space-between;">
-                <button onclick="closeAddDomainModal()" style="background:#ccc; color:#333; margin-right:10px;">Cancel</button>
+                <button onclick="closeAddDomainModal()"
+                    style="background:#ccc; color:#333; margin-right:10px;">Cancel</button>
                 <button onclick="submitAddDomain()" style="background:#007BFF;">Submit</button>
             </div>
         </div>
@@ -435,16 +595,16 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain }),
             })
-            .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
-                return response.json();
-            })
-            .then(data => {
-                fetchLocalDomains();
-            })
-            .catch(error => {
-                console.error('Error deleting local domain:', error);
-            });
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    fetchLocalDomains();
+                })
+                .catch(error => {
+                    console.error('Error deleting local domain:', error);
+                });
         }
 
         function fetchLocalDomains() {
@@ -493,17 +653,17 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, domain, ip }),
                 })
-                .then(response => {
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    return response.json();
-                })
-                .then(data => {
-                    fetchLocalDomains();
-                    closeAddDomainModal();
-                })
-                .catch(error => {
-                    alert('Error adding local domain: ' + error);
-                });
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.json();
+                    })
+                    .then(data => {
+                        fetchLocalDomains();
+                        closeAddDomainModal();
+                    })
+                    .catch(error => {
+                        alert('Error adding local domain: ' + error);
+                    });
             } else {
                 alert('Please fill in all fields.');
             }
@@ -756,46 +916,46 @@
 
         async function getAvgCacheLookupTime() {
             try {
-            const response = await fetch('/api/getAvgCacheLookupTime');
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            const data = await response.json();
-            // Convert seconds to milliseconds
-            const ms = Number(data.avgCacheLookupTime) * 1000;
-            document.getElementById('cache-lookup').textContent = ms.toFixed(3) + ' ms';
+                const response = await fetch('/api/getAvgCacheLookupTime');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                // Convert seconds to milliseconds
+                const ms = Number(data.avgCacheLookupTime) * 1000;
+                document.getElementById('cache-lookup').textContent = ms.toFixed(3) + ' ms';
             } catch (error) {
-            console.error('Error fetching average cache lookup time:', error);
+                console.error('Error fetching average cache lookup time:', error);
             }
         }
 
         async function getAvgCacheResponseTime() {
             try {
-            const response = await fetch('/api/getAvgCacheResponseTime');
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            const data = await response.json();
-            // Convert seconds to milliseconds
-            const ms = Number(data.avgCacheResponseTime) * 1000;
-            document.getElementById('cache-response').textContent = ms.toFixed(3) + ' ms';
+                const response = await fetch('/api/getAvgCacheResponseTime');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                // Convert seconds to milliseconds
+                const ms = Number(data.avgCacheResponseTime) * 1000;
+                document.getElementById('cache-response').textContent = ms.toFixed(3) + ' ms';
             } catch (error) {
-            console.error('Error fetching average cache response time:', error);
+                console.error('Error fetching average cache response time:', error);
             }
         }
 
         async function getAvgNonCachedResponseTime() {
             try {
-            const response = await fetch('/api/getAvgNonCachedResponseTime');
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            const data = await response.json();
-            // Convert seconds to milliseconds
-            const ms = Number(data.avgAvgNCResponseTime) * 1000;
-            document.getElementById('NC-response').textContent = ms.toFixed(3) + ' ms';
+                const response = await fetch('/api/getAvgNonCachedResponseTime');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                // Convert seconds to milliseconds
+                const ms = Number(data.avgAvgNCResponseTime) * 1000;
+                document.getElementById('NC-response').textContent = ms.toFixed(3) + ' ms';
             } catch (error) {
-            console.error('Error fetching average non-cached response time:', error);
+                console.error('Error fetching average non-cached response time:', error);
             }
         }
 
@@ -805,7 +965,7 @@
                 if (queryDataJson === undefined) {
                     console.error('Failed to fetch query data');
                     return;
-                } 
+                }
                 document.getElementById('total-queries').textContent = queryDataJson.processed;
                 document.getElementById('total-blocked').textContent = queryDataJson.blocked;
                 const percentageBlocked = await getPercentageBlocked();
@@ -822,46 +982,46 @@
             }
         }
         getNumThreads();
-    
+
         function enableBlocking() {
             fetch('/api/enableAdList', {
                 method: 'POST',
             })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Ad cache enabled:', data);
-                document.getElementById('server-status').textContent = 'Blocking';
-            })
-            .catch(error => {
-                console.error('Error enabling ad cache:', error);
-            });
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Ad cache enabled:', data);
+                    document.getElementById('server-status').textContent = 'Blocking';
+                })
+                .catch(error => {
+                    console.error('Error enabling ad cache:', error);
+                });
         }
-    
+
         function disableBlocking() {
             fetch('/api/disableAdList', {
                 method: 'POST',
             })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Ad cache disabled:', data);
-                document.getElementById('server-status').textContent = 'Not Blocking';
-            })
-            .catch(error => {
-                console.error('Error disabling ad cache:', error);
-            });
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Ad cache disabled:', data);
+                    document.getElementById('server-status').textContent = 'Not Blocking';
+                })
+                .catch(error => {
+                    console.error('Error disabling ad cache:', error);
+                });
         }
 
-        function disableBlockingForTime(time){
+        function disableBlockingForTime(time) {
             try {
                 disableBlocking();
                 console.log('Ad cache disabled for', time, 'seconds');
@@ -880,14 +1040,14 @@
                     throw new Error('Network response was not ok');
                 }
                 const data = await response.json();
-                
+
                 return data;
             } catch (error) {
                 console.error('There was a problem with the fetch operation:', error);
                 return 0;
             }
         }
-    
+
         async function getPercentageBlocked() {
             const totalQueries = parseInt(document.getElementById('total-queries').textContent);
             const totalBlocked = parseInt(document.getElementById('total-blocked').textContent);
@@ -898,7 +1058,7 @@
                 return '0%';
             }
         }
-    
+
         function getDomainsOnAdlists() {
             fetch('/api/domainsInAdlist')
                 .then(response => response.json())
@@ -924,7 +1084,7 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Blocked Queries', 
+                        label: 'Blocked Queries',
                         data: blockedData,
                         backgroundColor: 'rgba(255, 0, 0, 0.7)',
                         borderColor: '#FF0000',
@@ -932,8 +1092,8 @@
                     },
                     {
                         label: 'Allowed Queries',
-                        data: queryData, 
-                        backgroundColor: 'rgba(0, 123, 255, 0.7)', 
+                        data: queryData,
+                        backgroundColor: 'rgba(0, 123, 255, 0.7)',
                         borderColor: '#007BFF',
                         borderWidth: 1
                     }
@@ -972,39 +1132,297 @@
         // Function to update the graph
         function updateGraph() {
             fetch('/api/graphData')
-            .then(response => response.json())
-            .then(data => {
-                labels.length = 0;
-                queryData.length = 0;
-                blockedData.length = 0;
+                .then(response => response.json())
+                .then(data => {
+                    labels.length = 0;
+                    queryData.length = 0;
+                    blockedData.length = 0;
 
-                data.labels.forEach((label, index) => {
-                    labels.push(label);
-                    const totalQueriesFromAPI = data.queries[index];
-                    const blockedQueriesFromAPI = data.blocked[index];
+                    data.labels.forEach((label, index) => {
+                        labels.push(label);
+                        const totalQueriesFromAPI = data.queries[index];
+                        const blockedQueriesFromAPI = data.blocked[index];
 
-                    const allowedQueries = totalQueriesFromAPI - blockedQueriesFromAPI;
+                        const allowedQueries = totalQueriesFromAPI - blockedQueriesFromAPI;
 
-                    queryData.push(allowedQueries); 
-                    blockedData.push(blockedQueriesFromAPI); 
+                        queryData.push(allowedQueries);
+                        blockedData.push(blockedQueriesFromAPI);
+                    });
+
+                    if (labels.length > maxDataPoints) {
+                        const excess = labels.length - maxDataPoints;
+                        labels.splice(0, excess);
+                        queryData.splice(0, excess);
+                        blockedData.splice(0, excess);
+                    }
+
+                    queryChart.update();
+                })
+                .catch(error => {
+                    console.error('Error fetching graph data:', error);
                 });
-
-                if (labels.length > maxDataPoints) {
-                    const excess = labels.length - maxDataPoints;
-                    labels.splice(0, excess);
-                    queryData.splice(0, excess);
-                    blockedData.splice(0, excess);
-                }
-                
-                queryChart.update();
-            })
-            .catch(error => {
-                console.error('Error fetching graph data:', error);
-            });
         }
 
         updateGraph();
         setInterval(updateGraph, 60000 * 5); 
     </script>
+
+    <!-- DHCP JavaScript Functions -->
+    <script>
+        // ============================================================================
+        // DHCP Management Functions
+        // ============================================================================
+
+        // Fetch and display DHCP status on page load
+        async function fetchDhcpStatus() {
+            try {
+                const response = await fetch('/api/getDhcpStatus');
+                const data = await response.json();
+                updateDhcpStatusUI(data.enabled);
+                document.getElementById('dhcp-enabled').checked = data.enabled;
+            } catch (error) {
+                console.error('Error fetching DHCP status:', error);
+            }
+        }
+
+        // Update DHCP status UI elements
+        function updateDhcpStatusUI(enabled) {
+            const statusSpan = document.getElementById('dhcp-enabled-status');
+            if (enabled) {
+                statusSpan.textContent = 'Enabled';
+                statusSpan.style.backgroundColor = '#28a745';
+            } else {
+                statusSpan.textContent = 'Disabled';
+                statusSpan.style.backgroundColor = '#dc3545';
+            }
+        }
+
+        // Toggle DHCP server on/off
+        async function toggleDhcp(enabled) {
+            try {
+                const response = await fetch(`/api/setDhcpStatus?enabled=${enabled ? '1' : '0'}`, {
+                    method: 'POST'
+                });
+                if (!response.ok) throw new Error('Failed to toggle DHCP');
+                const data = await response.json();
+                updateDhcpStatusUI(enabled);
+
+                if (enabled) {
+                    // Refresh data when enabling
+                    await fetchDhcpSettings();
+                    await fetchDhcpLeases();
+                }
+            } catch (error) {
+                console.error('Error toggling DHCP:', error);
+                alert('Error toggling DHCP server: ' + error.message);
+                // Revert checkbox state
+                document.getElementById('dhcp-enabled').checked = !enabled;
+            }
+        }
+
+        // Fetch and populate DHCP settings
+        async function fetchDhcpSettings() {
+            try {
+                const response = await fetch('/api/getDhcpSettings');
+                const data = await response.json();
+
+                if (data.rangeStart) document.getElementById('dhcp-range-start').value = data.rangeStart;
+                if (data.rangeEnd) document.getElementById('dhcp-range-end').value = data.rangeEnd;
+                if (data.subnetMask) document.getElementById('dhcp-subnet').value = data.subnetMask;
+                if (data.gateway) document.getElementById('dhcp-gateway').value = data.gateway;
+                if (data.dnsServer) document.getElementById('dhcp-dns').value = data.dnsServer;
+                if (data.leaseTime) {
+                    const leaseSelect = document.getElementById('dhcp-lease-time');
+                    for (let opt of leaseSelect.options) {
+                        if (opt.value == data.leaseTime) {
+                            opt.selected = true;
+                            break;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching DHCP settings:', error);
+            }
+        }
+
+        // Save DHCP settings
+        async function saveDhcpSettings() {
+            const rangeStart = document.getElementById('dhcp-range-start').value;
+            const rangeEnd = document.getElementById('dhcp-range-end').value;
+            const subnetMask = document.getElementById('dhcp-subnet').value;
+            const gateway = document.getElementById('dhcp-gateway').value;
+            const dnsServer = document.getElementById('dhcp-dns').value;
+            const leaseTime = document.getElementById('dhcp-lease-time').value;
+
+            if (!rangeStart || !rangeEnd || !subnetMask || !gateway || !dnsServer) {
+                alert('Please fill in all DHCP settings fields.');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams({
+                    rangeStart, rangeEnd, subnetMask, gateway, dnsServer, leaseTime
+                });
+                const response = await fetch(`/api/setDhcpSettings?${params}`, {
+                    method: 'POST'
+                });
+                if (!response.ok) throw new Error('Failed to save settings');
+
+                const data = await response.json();
+                alert('DHCP settings saved successfully!');
+            } catch (error) {
+                console.error('Error saving DHCP settings:', error);
+                alert('Error saving DHCP settings: ' + error.message);
+            }
+        }
+
+        // Fetch and display DHCP leases
+        async function fetchDhcpLeases() {
+            try {
+                const response = await fetch('/api/getDhcpLeases');
+                const data = await response.json();
+
+                const tableBody = document.getElementById('dhcp-table-body');
+                tableBody.innerHTML = '';
+
+                if (data.leases && data.leases.length > 0) {
+                    data.leases.forEach(lease => {
+                        const row = document.createElement('tr');
+                        const typeLabel = lease.isStatic ?
+                            '<span style="background:#007BFF; color:white; padding:2px 8px; border-radius:4px; font-size:12px;">Static</span>' :
+                            '<span style="background:#6c757d; color:white; padding:2px 8px; border-radius:4px; font-size:12px;">Dynamic</span>';
+
+                        row.innerHTML = `
+                            <td>${lease.mac || 'N/A'}</td>
+                            <td>${lease.ip || 'N/A'}</td>
+                            <td>${lease.hostname || '-'}</td>
+                            <td>${typeLabel}</td>
+                            <td>
+                                ${lease.isStatic ?
+                                `<button onclick="deleteDhcpLease('${lease.mac}')" style="background-color:#dc3545; padding:6px 12px; font-size:13px;">Delete</button>` :
+                                '<em style="color:#999;">-</em>'}
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; font-style:italic;">No leases found</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error fetching DHCP leases:', error);
+            }
+        }
+
+        // Open Add DHCP Lease Modal
+        function openAddDhcpModal() {
+            const modal = document.getElementById('add-dhcp-modal');
+            modal.style.display = 'flex';
+            // Clear previous values
+            document.getElementById('modal-dhcp-mac').value = '';
+            document.getElementById('modal-dhcp-ip').value = '';
+            document.getElementById('modal-dhcp-name').value = '';
+        }
+
+        // Close Add DHCP Lease Modal
+        function closeAddDhcpModal() {
+            const modal = document.getElementById('add-dhcp-modal');
+            modal.style.display = 'none';
+        }
+
+        // Submit new DHCP lease
+        async function submitAddDhcpLease() {
+            const mac = document.getElementById('modal-dhcp-mac').value.trim();
+            const ip = document.getElementById('modal-dhcp-ip').value.trim();
+            const name = document.getElementById('modal-dhcp-name').value.trim();
+
+            // Basic validation
+            if (!mac || !ip) {
+                alert('MAC address and IP address are required.');
+                return;
+            }
+
+            // MAC address format validation
+            const macRegex = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
+            if (!macRegex.test(mac)) {
+                alert('Invalid MAC address format. Use format: AA:BB:CC:DD:EE:FF');
+                return;
+            }
+
+            // IP address format validation
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipRegex.test(ip)) {
+                alert('Invalid IP address format. Use format: 192.168.1.100');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams({ mac, ip });
+                if (name) params.append('name', name);
+
+                const response = await fetch(`/api/addDhcpLease?${params}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Failed to add lease');
+                }
+
+                closeAddDhcpModal();
+                await fetchDhcpLeases();
+                alert('DHCP lease added successfully!');
+            } catch (error) {
+                console.error('Error adding DHCP lease:', error);
+                alert('Error adding DHCP lease: ' + error.message);
+            }
+        }
+
+        // Delete a DHCP lease
+        async function deleteDhcpLease(mac) {
+            if (!confirm(`Are you sure you want to delete the lease for MAC: ${mac}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/deleteDhcpLease?mac=${encodeURIComponent(mac)}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Failed to delete lease');
+                }
+
+                await fetchDhcpLeases();
+            } catch (error) {
+                console.error('Error deleting DHCP lease:', error);
+                alert('Error deleting DHCP lease: ' + error.message);
+            }
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('add-dhcp-modal').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeAddDhcpModal();
+            }
+        });
+
+        // Initialize DHCP tab data when switching to it
+        const originalShowTab = window.showTab;
+        window.showTab = function (tabName) {
+            originalShowTab(tabName);
+            if (tabName === 'dhcp') {
+                fetchDhcpStatus();
+                fetchDhcpSettings();
+                fetchDhcpLeases();
+            }
+        };
+
+        // Initial load if DHCP tab is somehow active
+        document.addEventListener('DOMContentLoaded', function () {
+            // DHCP will be loaded when user switches to the tab
+        });
+    </script>
 </body>
+
 </html>

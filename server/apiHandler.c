@@ -23,6 +23,7 @@
 
 #include "cacheSystem.h"
 #include "dhcpServer.h"
+#include "dnssecHandler.h"
 #include "runningAvgs.h"
 #include "thread.h"
 
@@ -1258,6 +1259,52 @@ static enum MHD_Result handleSetUpstreamDNS(struct MHD_Connection *connection) {
 }
 
 // ============================================================================
+// DNSSEC API Handlers
+// ============================================================================
+
+static enum MHD_Result
+handleGetDnssecStatus(struct MHD_Connection *connection) {
+  char response[64];
+  snprintf(response, sizeof(response), "{\"enabled\":%s}",
+           dnssec_is_enabled() ? "true" : "false");
+  struct MHD_Response *resp = MHD_create_response_from_buffer(
+      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
+  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+}
+
+static enum MHD_Result
+handleSetDnssecStatus(struct MHD_Connection *connection) {
+  const char *enabled_str =
+      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "enabled");
+  if (!enabled_str) {
+    const char *response = "{\"error\": \"Missing enabled parameter\"}";
+    struct MHD_Response *resp = MHD_create_response_from_buffer(
+        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
+    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+  }
+
+  int enabled =
+      (strcmp(enabled_str, "1") == 0 || strcmp(enabled_str, "true") == 0);
+  dnssec_set_enabled(enabled);
+
+  char response[64];
+  snprintf(response, sizeof(response), "{\"status\":\"DNSSEC %s\"}",
+           enabled ? "enabled" : "disabled");
+  struct MHD_Response *resp = MHD_create_response_from_buffer(
+      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
+  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+}
+
+static enum MHD_Result handleGetDnssecStats(struct MHD_Connection *connection) {
+  char response[256];
+  snprintf(response, sizeof(response), "{\"validated\":%u,\"failed\":%u}",
+           dnssec_get_validated_count(), dnssec_get_failed_count());
+  struct MHD_Response *resp = MHD_create_response_from_buffer(
+      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
+  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+}
+
+// ============================================================================
 // DHCP API Handlers
 // ============================================================================
 
@@ -1470,6 +1517,9 @@ ApiEndpoint apiEndpoints[] = {
     {"/deleteDhcpLease", handleDeleteDhcpLease},
     {"/getDhcpSettings", handleGetDhcpSettings},
     {"/setDhcpSettings", handleSetDhcpSettings},
+    {"/getDnssecStatus", handleGetDnssecStatus},
+    {"/setDnssecStatus", handleSetDnssecStatus},
+    {"/getDnssecStats", handleGetDnssecStats},
     {NULL, NULL} // Sentinel value to mark the end of the table
 };
 

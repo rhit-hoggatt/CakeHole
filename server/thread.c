@@ -16,13 +16,12 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-
 #include "apiHandler.h"
 #include "cacheHandler.h"
 #include "cacheSystem.h"
+#include "dnssecHandler.h"
 #include "runningAvgs.h"
 #include "workQueue.h"
-
 
 int adCacheEnabled;
 pthread_mutex_t adCacheLock = PTHREAD_MUTEX_INITIALIZER;
@@ -509,6 +508,11 @@ void *processDNS(void *arg) {
     }
     inet_pton(AF_INET, upstream_dns_str, &upstream_addr.sin_addr);
 
+    // If DNSSEC is enabled, prepare the query with DO bit + EDNS
+    if (dnssec_is_enabled()) {
+      dnssec_prepare_query(query_pkt);
+    }
+
     size_t query_size;
     ldns_pkt2wire(&query_wire, query_pkt, &query_size);
 
@@ -519,7 +523,8 @@ void *processDNS(void *arg) {
       goto cleanup;
     }
 
-    char newBuffer[4096];
+    // Buffer sized for DNSSEC responses (RRSIG records make them larger)
+    char newBuffer[8192];
     ssize_t response_size =
         recvfrom(upstream_sock, newBuffer, sizeof(newBuffer), 0, NULL, NULL);
     if (response_size < 0) {
@@ -533,7 +538,53 @@ void *processDNS(void *arg) {
       goto cleanup;
     }
 
-    // Parse upstream response and cache A records
+    // Handle TCP fallback for truncated DNSSEC responses
+    ldns_pkt *tc_check_pkt = NULL;
+    if (ldns_wire2pkt(&tc_check_pkt, (uint8_t *)newBuffer, response_size) ==
+            LDNS_STATUS_OK &&
+        ldns_pkt_tc(tc_check_pkt)) {
+      ldns_pkt_free(tc_check_pkt);
+      tc_check_pkt = NULL;
+
+      // Response was truncated — retry over TCP
+      int tcp_sock = socket(AF_INET, SOCK_STREAM, 0);
+      if (tcp_sock >= 0) {
+        struct timeval tcp_timeout;
+        tcp_timeout.tv_sec = 5;
+        tcp_timeout.tv_usec = 0;
+        setsockopt(tcp_sock, SOL_SOCKET, SO_RCVTIMEO, &tcp_timeout,
+                   sizeof(tcp_timeout));
+        setsockopt(tcp_sock, SOL_SOCKET, SO_SNDTIMEO, &tcp_timeout,
+                   sizeof(tcp_timeout));
+
+        if (connect(tcp_sock, (struct sockaddr *)&upstream_addr,
+                    sizeof(upstream_addr)) == 0) {
+          // TCP DNS uses 2-byte length prefix
+          uint16_t tcp_len = htons((uint16_t)query_size);
+          if (send(tcp_sock, &tcp_len, 2, 0) == 2 &&
+              send(tcp_sock, query_wire, query_size, 0) ==
+                  (ssize_t)query_size) {
+            uint16_t resp_len;
+            if (recv(tcp_sock, &resp_len, 2, MSG_WAITALL) == 2) {
+              resp_len = ntohs(resp_len);
+              if (resp_len <= sizeof(newBuffer)) {
+                ssize_t tcp_received =
+                    recv(tcp_sock, newBuffer, resp_len, MSG_WAITALL);
+                if (tcp_received == resp_len) {
+                  response_size = tcp_received;
+                }
+              }
+            }
+          }
+        }
+        close(tcp_sock);
+      }
+    } else {
+      if (tc_check_pkt)
+        ldns_pkt_free(tc_check_pkt);
+    }
+
+    // Parse upstream response and validate DNSSEC if enabled
     ldns_pkt *response_pkt = NULL;
     ldns_status response_status =
         ldns_wire2pkt(&response_pkt, (uint8_t *)newBuffer, response_size);
@@ -541,6 +592,15 @@ void *processDNS(void *arg) {
       fprintf(stderr, "Failed to parse upstream response: %s\n",
               ldns_get_errorstr_by_id(response_status));
     } else {
+      // DNSSEC validation: check the response if enabled
+      if (dnssec_is_enabled() && !dnssec_validate_response(response_pkt)) {
+        fprintf(stderr, "DNSSEC validation failed for: %s\n",
+                domain_str ? domain_str : "(unknown)");
+        ldns_pkt_free(response_pkt);
+        sendServFail(sockfd, client_addr, client_len, query_pkt);
+        goto cleanup;
+      }
+
       ldns_rr_list *answer_list = ldns_pkt_answer(response_pkt);
       if (answer_list && ldns_rr_list_rr_count(answer_list) > 0) {
         for (size_t i = 0; i < ldns_rr_list_rr_count(answer_list); i++) {

@@ -331,7 +331,7 @@ app.get('/api/getAdlists', (req, res) => {
 
         response.on('end', () => {
             try {
-                const dataJSON = {"data": data};
+                const dataJSON = { "data": data };
                 res.json(dataJSON);
             } catch (error) {
                 res.status(500).json({ error: 'Failed to parse response from C server' });
@@ -578,8 +578,8 @@ setInterval(() => {
             // Add data to graphData
             const now = new Date();
             const timeLabel = now.getHours().toString().padStart(2, '0') + ':' +
-                              now.getMinutes().toString().padStart(2, '0') + ':' +
-                              now.getSeconds().toString().padStart(2, '0');
+                now.getMinutes().toString().padStart(2, '0') + ':' +
+                now.getSeconds().toString().padStart(2, '0');
 
             graphData.labels.push(timeLabel);
             graphData.queries.push(queriesDiff);
@@ -1019,6 +1019,86 @@ app.post('/api/setUpstreamDNS', (req, res) => {
     });
     request.on('error', (error) => {
         res.status(500).json({ error: 'Failed to communicate with C server' });
+    });
+    request.end();
+});
+
+// DNSSEC API routes
+app.get('/api/getDnssecStatus', (req, res) => {
+    const options = {
+        hostname: 'localhost',
+        port: 8081,
+        path: '/getDnssecStatus',
+        method: 'GET'
+    };
+    const request = http.request(options, (response) => {
+        let data = '';
+        response.on('data', (chunk) => { data += chunk; });
+        response.on('end', () => {
+            try {
+                const parsedData = JSON.parse(data);
+                res.json(parsedData);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to parse DNSSEC status response' });
+            }
+        });
+    });
+    request.on('error', (error) => {
+        res.status(500).json({ error: 'Failed to communicate with C server for DNSSEC status' });
+    });
+    request.end();
+});
+
+app.post('/api/setDnssecStatus', (req, res) => {
+    const enabled = req.body.enabled ? 'true' : 'false';
+    const options = {
+        hostname: 'localhost',
+        port: 8081,
+        path: `/setDnssecStatus?enabled=${encodeURIComponent(enabled)}`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    };
+    const request = http.request(options, (response) => {
+        let data = '';
+        response.on('data', (chunk) => { data += chunk; });
+        response.on('end', () => {
+            try {
+                const parsedData = JSON.parse(data);
+                res.json(parsedData);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to parse DNSSEC set response' });
+            }
+        });
+    });
+    request.on('error', (error) => {
+        res.status(500).json({ error: 'Failed to communicate with C server for DNSSEC set' });
+    });
+    request.end();
+});
+
+app.get('/api/getDnssecStats', (req, res) => {
+    const options = {
+        hostname: 'localhost',
+        port: 8081,
+        path: '/getDnssecStats',
+        method: 'GET'
+    };
+    const request = http.request(options, (response) => {
+        let data = '';
+        response.on('data', (chunk) => { data += chunk; });
+        response.on('end', () => {
+            try {
+                const parsedData = JSON.parse(data);
+                res.json(parsedData);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to parse DNSSEC stats response' });
+            }
+        });
+    });
+    request.on('error', (error) => {
+        res.status(500).json({ error: 'Failed to communicate with C server for DNSSEC stats' });
     });
     request.end();
 });

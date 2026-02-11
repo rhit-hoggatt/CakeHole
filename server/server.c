@@ -19,6 +19,7 @@
 #include "cacheHandler.h"
 #include "cacheSystem.h"
 #include "dhcpServer.h"
+#include "dnssecHandler.h"
 #include "runningAvgs.h"
 #include "thread.h"
 #include "workQueue.h"
@@ -52,6 +53,11 @@ int main(int argc, char *argv[]) {
   if (cache_init != 0) {
     fprintf(stderr, "Failed to initialize cache system\n");
     exit(EXIT_FAILURE);
+  }
+
+  // Initialize DNSSEC subsystem (loads config from disk)
+  if (dnssec_init() != 0) {
+    fprintf(stderr, "Warning: Failed to initialize DNSSEC config\n");
   }
 
   running_avgs_init(500);

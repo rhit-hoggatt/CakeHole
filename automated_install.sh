@@ -24,6 +24,9 @@ readonly SERVICE_NAME_WEB="${PROJECT_NAME}_web_server"
 # Node.js version to install via NVM
 readonly NODE_VERSION="22"
 
+# Git branch to checkout
+readonly BRANCH="DHCP"  # Change to "main" for production
+
 # --- Global Variables ---
 NODE_EXEC_PATH=""
 NPM_EXEC_PATH=""
@@ -266,12 +269,30 @@ setup_repository() {
   else
     info "Cloning CakeHole repository from $REPO_URL into $INSTALL_DIR..."
     mkdir -p "$(dirname "$INSTALL_DIR")" || { error "Failed to create parent directory for $INSTALL_DIR"; exit 1; }
-    if git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"; then
+    if git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"; then
       info "Repository cloned successfully into $INSTALL_DIR."
     else
-      error "Failed to clone repository from $REPO_URL into $INSTALL_DIR"
+      error "Failed to clone repository from $REPO_URL (branch: $BRANCH) into $INSTALL_DIR"
       exit 1
     fi
+  fi
+  
+  # Ensure we're on the correct branch
+  info "Checking out branch: $BRANCH"
+  cd "$INSTALL_DIR" || { error "Failed to cd into $INSTALL_DIR"; exit 1; }
+  if git checkout "$BRANCH"; then
+    info "Successfully checked out branch: $BRANCH"
+  else
+    error "Failed to checkout branch: $BRANCH"
+    exit 1
+  fi
+  
+  # Pull latest changes for this branch
+  if git pull origin "$BRANCH"; then
+    info "Successfully pulled latest changes from $BRANCH"
+  else
+    error "Failed to pull latest changes from $BRANCH"
+    exit 1
   fi
 }
 

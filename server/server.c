@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
   int sockfd;
   struct sockaddr_in server_addr, client_addr;
   socklen_t client_len = sizeof(client_addr);
-  char buffer[512];
+  char buffer[4096];
 
   if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
     perror("Socket creation failed");
@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
     close(sockfd);
     exit(EXIT_FAILURE);
   }
+
+  init_queue();
 
   int THREAD_COUNT = getNumThreads();
   if (THREAD_COUNT <= 0) {

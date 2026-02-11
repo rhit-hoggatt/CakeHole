@@ -21,12 +21,10 @@
 #include <time.h>
 #include <unistd.h>
 
-
 #include "cacheSystem.h"
 #include "dhcpServer.h"
 #include "runningAvgs.h"
 #include "thread.h"
-
 
 #define SALT_SIZE 16
 #define HASH_SIZE 64
@@ -1219,10 +1217,11 @@ static enum MHD_Result handleSetNumThreads(struct MHD_Connection *connection) {
 
 static enum MHD_Result handleGetUpstreamDNS(struct MHD_Connection *connection) {
   char response[256];
-  const char *upstreamDNS = getUpstreamDNS();
+  char *upstreamDNS = getUpstreamDNS();
   if (upstreamDNS) {
     snprintf(response, sizeof(response), "{\"upstreamDNS\": \"%s\"}",
              upstreamDNS);
+    free(upstreamDNS);
     struct MHD_Response *resp = MHD_create_response_from_buffer(
         strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
     return MHD_queue_response(connection, MHD_HTTP_OK, resp);

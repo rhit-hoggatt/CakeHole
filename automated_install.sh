@@ -463,13 +463,33 @@ main() {
     info "No package.json found in $final_web_server_dir, skipping npm install."
   fi
 
+  # Debug output
+  info "========================================="
+  info "DEBUG: About to create services"
+  info "SERVER_BINARY_REL_PATH: $SERVER_BINARY_REL_PATH"
+  info "final_server_binary_path: $final_server_binary_path"
+  info "final_web_server_dir: $final_web_server_dir"
+  info "Checking if binary exists: $final_server_binary_path"
+  if [ -f "$final_server_binary_path" ]; then
+    info "✓ Binary exists"
+    ls -lh "$final_server_binary_path"
+  else
+    error "✗ Binary NOT found at $final_server_binary_path"
+    error "Contents of $(dirname "$final_server_binary_path"):"
+    ls -la "$(dirname "$final_server_binary_path")" || error "Directory doesn't exist"
+    exit 1
+  fi
+  info "========================================="
+
   # Pass the dynamically determined absolute binary path to create_dns_service
   if ! create_dns_service; then # No longer needs argument, uses global SERVER_BINARY_REL_PATH
-    error "DNS service creation failed. Please check logs."
+    error "DNS service creation failed. Aborting."
+    exit 1
   fi
 
   if ! create_web_service "$final_web_server_dir"; then 
-    error "Web service creation failed. Please check logs."
+    error "Web service creation failed. Aborting."
+    exit 1
   fi
 
   info "--------------------------------------------------------------------"

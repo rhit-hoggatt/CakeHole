@@ -22,47 +22,69 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-
+// Helper function to call the C API
+function callApi(endpoint, method, body, callback) {
     const options = {
         hostname: 'localhost',
         port: 8081,
-        path: `/validateLogin?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`,
-        method: 'POST',
+        path: endpoint,
+        method: method,
         headers: {
             'Content-Type': 'application/json'
         }
     };
 
-    const request = http.request(options, (response) => {
+    const req = http.request(options, (res) => {
         let data = '';
 
-        response.on('data', (chunk) => {
+        res.on('data', (chunk) => {
             data += chunk;
         });
 
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                if (parsedData.status === 'Login successful') {
-                    req.session.isAuthenticated = true; // Mark the user as authenticated
-                    res.json({ success: true });
-                } else {
-                    res.status(401).json({ success: false, message: 'Invalid credentials' });
+        res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                try {
+                    // Try to parse as JSON, otherwise return text
+                    const parsed = JSON.parse(data);
+                    callback(null, parsed);
+                } catch (e) {
+                    callback(null, data);
                 }
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
+            } else {
+                try {
+                    const parsed = JSON.parse(data);
+                    callback(parsed.error || 'API Error', null);
+                } catch (e) {
+                    callback('API Error: ' + res.statusCode, null);
+                }
             }
         });
     });
 
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
+    req.on('error', (error) => {
+        callback(error, null);
     });
 
-    request.write(JSON.stringify({ username, password }));
-    request.end();
+    if (body) {
+        req.write(JSON.stringify(body));
+    }
+    req.end();
+}
+
+
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+    callApi('/validateLogin', 'POST', { username, password }, (err, data) => {
+        if (err) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+        if (data && data.status === 'Login successful') {
+            req.session.isAuthenticated = true;
+            res.json({ success: true });
+        } else {
+            res.status(401).json({ success: false, message: 'Invalid credentials' });
+        }
+    });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -70,15 +92,15 @@ app.post('/api/logout', (req, res) => {
         if (err) {
             return res.status(500).json({ error: 'Failed to log out' });
         }
-        res.redirect('/'); // Redirect to the login page
+        res.redirect('/');
     });
 });
 
 function isAuthenticated(req, res, next) {
     if (req.session.isAuthenticated) {
-        return next(); // User is authenticated, proceed to the next middleware
+        return next();
     }
-    res.redirect('/'); // Redirect to the login page if not authenticated
+    res.redirect('/');
 }
 
 app.get('/index.html', isAuthenticated, (req, res) => {
@@ -86,472 +108,110 @@ app.get('/index.html', isAuthenticated, (req, res) => {
 });
 
 app.get('/api/terminalOutput', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/terminalOutput',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                res.json({ output: data });
-            } catch (error) {
-                res.status(502).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/terminalOutput', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        // The C server returns raw text for this endpoint
+        res.json({ output: data });
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
 });
 
 app.get('/api/domainsInAdlist', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/domainsInAdlist',
-        method: 'GET'
-    };
-
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/domainsInAdlist', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-
-    request.end();
 });
 
 app.get('/api/numQueries', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/numQueries',
-        method: 'GET'
-    };
-
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/numQueries', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-
-    request.end();
 });
 
 app.post('/api/enableSpecificAdlist', (req, res) => {
-    const urlToSend = req.body.url; // Extract the URL from the POST body
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/enableAdlist?url=${encodeURIComponent(urlToSend)}`, // Append as a query parameter
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    }
-    );
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    }
-    );
-    request.end();
+    callApi('/enableAdlist', 'POST', { url: req.body.url }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
 app.post('/api/disableSpecificAdlist', (req, res) => {
-    const urlToSend = req.body.url; // Extract the URL from the POST body
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/disableAdlist?url=${encodeURIComponent(urlToSend)}`, // Append as a query parameter
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    }
-    );
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    }
-    );
-    request.end();
+    callApi('/disableAdlist', 'POST', { url: req.body.url }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
+app.post('/api/enableAdBlocker', (req, res) => {
+    callApi('/enableAdCache', 'POST', {}, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
+});
+
+app.post('/api/disableAdBlocker', (req, res) => {
+    callApi('/disableAdCache', 'POST', {}, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
+});
+
+
 app.post('/api/enableAdlist', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/enableAdCache',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/enableAdCache', 'POST', {}, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.write(JSON.stringify({ enable: true })); // Send the request body
-    request.end();
 });
 
 app.post('/api/disableAdList', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/disableAdCache',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/disableAdCache', 'POST', {}, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.write(JSON.stringify({ enable: true })); // Send the request body
-    request.end();
 });
 
 app.get('/api/getAdlists', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getAdlists',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const dataJSON = { "data": data };
-                res.json(dataJSON);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/getAdlists', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        // The C server returns a raw string of adlists separated by commas
+        res.json({ data: data });
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
 });
 
 app.post('/api/addAdlist', (req, res) => {
-    const urlToSend = req.body.url; // Extract the URL from the POST body
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/addAdlist?url=${encodeURIComponent(urlToSend)}`, // Append as a query parameter
-        method: 'GET', // Change the method to GET
-        headers: {
-            // 'Content-Type': 'application/json' - Not needed for GET with query params
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/addAdlist', 'POST', { url: req.body.url }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-
-    request.end(); // No need for request.write with GET
 });
 
 app.post('/api/removeAdlist', (req, res) => {
-    const urlToSend = req.body.url; // Extract the URL from the POST body
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/removeAdlist?url=${encodeURIComponent(urlToSend)}`, // Append as a query parameter
-        method: 'GET', // Change the method to GET
-        headers: {
-            // 'Content-Type': 'application/json' - Not needed for GET with query params
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/removeAdlist', 'POST', { url: req.body.url }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-
-    request.end(); // No need for request.write with GET
-});
-
-app.post('/api/enableAdlist', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/enableAdlist',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.write(JSON.stringify({ url: req.body.url })); // Send the request body
-    request.end();
-});
-
-app.post('/api/disableAdlist', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/disableAdlist',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.write(JSON.stringify({ url: req.body.url })); // Send the request body
-    request.end();
 });
 
 app.post('/api/reloadAdlists', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/reloadAdlists',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    }
-    );
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    }
-    );
-    request.end();
+    callApi('/reloadAdlists', 'POST', {}, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
 app.post('/api/restartDNS', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/restartDNS',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    }
-    );
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    }
-    );
-    request.end();
+    callApi('/restartDNS', 'POST', {}, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
 const graphData = {
-    labels: [], // Time labels
-    queries: [], // Queries in this interval
-    blocked: [] // Blocked queries in this interval
+    labels: [],
+    queries: [],
+    blocked: []
 };
 const maxDataPoints = 120;
 
@@ -559,559 +219,193 @@ let lastProcessed = null;
 let lastBlocked = null;
 
 setInterval(() => {
-    fetch('http://localhost:3333/api/numQueries')
-        .then(response => response.json())
-        .then(data => {
-            const totalQueries = data.processed;
-            const totalBlocked = data.blocked;
+    callApi('/numQueries', 'GET', null, (err, data) => {
+        if (err) return console.error('Error fetching graph data:', err);
 
-            // Calculate the difference since last poll
-            let queriesDiff = 0;
-            let blockedDiff = 0;
-            if (lastProcessed !== null && lastBlocked !== null) {
-                queriesDiff = totalQueries - lastProcessed;
-                blockedDiff = totalBlocked - lastBlocked;
-            }
-            lastProcessed = totalQueries;
-            lastBlocked = totalBlocked;
+        const totalQueries = data.processed;
+        const totalBlocked = data.blocked;
 
-            // Add data to graphData
-            const now = new Date();
-            const timeLabel = now.getHours().toString().padStart(2, '0') + ':' +
-                now.getMinutes().toString().padStart(2, '0') + ':' +
-                now.getSeconds().toString().padStart(2, '0');
+        let queriesDiff = 0;
+        let blockedDiff = 0;
 
-            graphData.labels.push(timeLabel);
-            graphData.queries.push(queriesDiff);
-            graphData.blocked.push(blockedDiff);
+        if (lastProcessed !== null && lastBlocked !== null) {
+            queriesDiff = totalQueries - lastProcessed;
+            blockedDiff = totalBlocked - lastBlocked;
+        }
+        lastProcessed = totalQueries;
+        lastBlocked = totalBlocked;
 
-            // Keep the graph data within the last hour
-            if (graphData.labels.length > maxDataPoints) {
-                graphData.labels.shift();
-                graphData.queries.shift();
-                graphData.blocked.shift();
-            }
-        })
-        .catch(error => console.error('Error fetching data:', error));
-}, 60000 * 5);
+        const now = new Date();
+        const timeLabel = now.getHours().toString().padStart(2, '0') + ':' +
+            now.getMinutes().toString().padStart(2, '0') + ':' +
+            now.getSeconds().toString().padStart(2, '0');
+
+        graphData.labels.push(timeLabel);
+        graphData.queries.push(queriesDiff);
+        graphData.blocked.push(blockedDiff);
+
+        if (graphData.labels.length > maxDataPoints) {
+            graphData.labels.shift();
+            graphData.queries.shift();
+            graphData.blocked.shift();
+        }
+    });
+}, 5000);
 
 app.get('/api/graphData', (req, res) => {
     res.json(graphData);
 });
 
 app.post('/api/addLocalDomain', (req, res) => {
-    const domainToSend = req.body.domain;
-    const ipToSend = req.body.ip;
-    const nameToSend = req.body.name;
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/addLocalDomain?domain=${encodeURIComponent(domainToSend)}&ip=${encodeURIComponent(ipToSend)}&name=${encodeURIComponent(nameToSend)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    const { domain, ip, name } = req.body;
+    callApi('/addLocalDomain', 'POST', { domain, ip, name }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
 });
 
 app.get('/api/getLocalDomains', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getLocalDNSEntries',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const domains = data
-                    .split('\n')
-                    .filter(line => line.trim() !== '')
-                    .map(line => {
-                        const parts = line.trim().split(/\s+/);
-                        return {
-                            ip: parts[0] || '',
-                            domain: parts[1] || '',
-                            name: parts[2] || ''
-                        };
-                    });
-                res.json(domains);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/getLocalDNSEntries', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        // C server returns newline separated string
+        try {
+            const domains = data
+                .split('\n')
+                .filter(line => line.trim() !== '')
+                .map(line => {
+                    const parts = line.trim().split(/\s+/);
+                    return {
+                        ip: parts[0] || '',
+                        domain: parts[1] || '',
+                        name: parts[2] || ''
+                    };
+                });
+            res.json(domains);
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to parse response' });
+        }
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
 });
 
 app.post('/api/deleteLocalDomain', (req, res) => {
-    const domainToSend = req.body.domain;
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/removeLocalDomain?domain=${encodeURIComponent(domainToSend)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    callApi('/removeLocalDomain', 'POST', { domain: req.body.domain }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
 });
 
 // DHCP API routes
 app.post('/api/addDhcpLease', (req, res) => {
-    const macToSend = req.body.mac;
-    const ipToSend = req.body.ip;
-    const nameToSend = req.body.name;
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/addDhcpLease?mac=${encodeURIComponent(macToSend)}&ip=${encodeURIComponent(ipToSend)}&name=${encodeURIComponent(nameToSend)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse DHCP add response' });
-            }
-        });
+    const { mac, ip, name } = req.body;
+    callApi('/addDhcpLease', 'POST', { mac, ip, name }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server for DHCP add' });
-    });
-    request.end();
 });
 
 app.get('/api/getDhcpLeases', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getDhcpLeases',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const leases = JSON.parse(data);
-                res.json(leases);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse DHCP leases' });
-            }
-        });
+    callApi('/getDhcpLeases', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        // lease data is usually JSON
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server for DHCP leases' });
-    });
-    request.end();
 });
 
 app.post('/api/deleteDhcpLease', (req, res) => {
-    const macToSend = req.body.mac;
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/removeDhcpLease?mac=${encodeURIComponent(macToSend)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse DHCP delete response' });
-            }
-        });
+    callApi('/deleteDhcpLease', 'POST', { mac: req.body.mac }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server for DHCP delete' });
-    });
-    request.end();
 });
 
-app.get('/api/getNumThreads', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getNumThreads',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+app.get('/api/getDhcpStatus', (req, res) => {
+    callApi('/getDhcpStatus', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
 });
 
-app.post('/api/setNumThreads', (req, res) => {
-    const numThreadsToSend = req.body.numThreads;
+app.post('/api/itemUpdateKey', (req, res) => {
+    // This seems to be for toggling DHCP/DNSSEC status
+    const { key, value } = req.body;
 
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/setNumThreads?numThreads=${encodeURIComponent(numThreadsToSend)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
+    let endpoint = '';
+    let body = { enabled: value };
 
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+    if (key === 'dhcp') {
+        endpoint = '/setDhcpStatus';
+    } else if (key === 'dnssec') {
+        endpoint = '/setDnssecStatus';
+    } else {
+        return res.status(400).json({ error: 'Invalid key' });
     }
-    );
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    }
-    );
-    request.end();
+
+    callApi(endpoint, 'POST', body, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
-app.get('/api/getAvgCacheLookupTime', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getAvgCacheLookupTime',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
+app.post('/api/setDhcpStatus', (req, res) => {
+    // enabled is passed as query param in index.html currently, but we want to move to body.
+    // However, index.html might still send it as query param `?enabled=1`.
+    // My plan is to update index.html to send JSON body.
+    // So here I will expect req.body.enabled.
+    callApi('/setDhcpStatus', 'POST', { enabled: req.body.enabled }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
-});
-
-app.get('/api/getAvgCacheResponseTime', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getAvgCacheResponseTime',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
-});
-
-app.get('/api/getAvgNonCachedResponseTime', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getAvgNonCachedResponseTime',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
-});
-
-app.get('/api/getUpstreamDNS', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getUpstreamDNS',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
-});
-
-app.post('/api/setUpstreamDNS', (req, res) => {
-    const upstreamDNSToSend = req.body.upstreamDNS;
-
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/setUpstreamDNS?upstreamDNS=${encodeURIComponent(upstreamDNSToSend)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-            data += chunk;
-        });
-
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse response from C server' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server' });
-    });
-    request.end();
-});
-
-// DNSSEC API routes
-app.get('/api/getDnssecStatus', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getDnssecStatus',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-        response.on('data', (chunk) => { data += chunk; });
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse DNSSEC status response' });
-            }
-        });
-    });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server for DNSSEC status' });
-    });
-    request.end();
 });
 
 app.post('/api/setDnssecStatus', (req, res) => {
-    const enabled = req.body.enabled ? 'true' : 'false';
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: `/setDnssecStatus?enabled=${encodeURIComponent(enabled)}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-        response.on('data', (chunk) => { data += chunk; });
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse DNSSEC set response' });
-            }
-        });
+    callApi('/setDnssecStatus', 'POST', { enabled: req.body.enabled }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server for DNSSEC set' });
+});
+
+app.get('/api/getDhcpSettings', (req, res) => {
+    callApi('/getDhcpSettings', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.end();
+});
+
+app.post('/api/saveDhcpSettings', (req, res) => {
+    callApi('/setDhcpSettings', 'POST', req.body, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
+});
+
+app.get('/api/getDnssecStatus', (req, res) => {
+    callApi('/getDnssecStatus', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
 app.get('/api/getDnssecStats', (req, res) => {
-    const options = {
-        hostname: 'localhost',
-        port: 8081,
-        path: '/getDnssecStats',
-        method: 'GET'
-    };
-    const request = http.request(options, (response) => {
-        let data = '';
-        response.on('data', (chunk) => { data += chunk; });
-        response.on('end', () => {
-            try {
-                const parsedData = JSON.parse(data);
-                res.json(parsedData);
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to parse DNSSEC stats response' });
-            }
-        });
+    callApi('/getDnssecStats', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.on('error', (error) => {
-        res.status(500).json({ error: 'Failed to communicate with C server for DNSSEC stats' });
+});
+
+app.get('/api/getUpstreamDNS', (req, res) => {
+    callApi('/getUpstreamDNS', 'GET', null, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
     });
-    request.end();
+});
+
+app.post('/api/setUpstreamDNS', (req, res) => {
+    callApi('/setUpstreamDNS', 'POST', { upstreamDNS: req.body.upstreamDNS }, (err, data) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(data);
+    });
 });
 
 app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
-});
-
-app.use((req, res, next) => {
-    res.status(404);
-    res.sendFile(path.join(__dirname, '404.html'), err => {
-        if (err) {
-            res.type('txt').send('404: Page Not Found');
-        }
-    });
+    console.log(`Server running at http://localhost:${port}`);
 });

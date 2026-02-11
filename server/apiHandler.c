@@ -21,6 +21,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "api_utils.h"
+#include "cJSON.h"
 #include "cacheSystem.h"
 #include "dhcpServer.h"
 #include "dnssecHandler.h"
@@ -156,7 +158,8 @@ int setNumThreads(int numThreads) {
   return 0;
 }
 
-typedef enum MHD_Result (*ApiHandler)(struct MHD_Connection *connection);
+typedef enum MHD_Result (*ApiHandler)(struct MHD_Connection *connection,
+                                      const char *method, cJSON *body);
 
 typedef struct {
   const char *endpoint;
@@ -219,7 +222,10 @@ int resetAdlists() {
 }
 
 static enum MHD_Result
-handleGetTotalNumOfQueries(struct MHD_Connection *connection) {
+handleGetTotalNumOfQueries(struct MHD_Connection *connection,
+                           const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[1024];
   pthread_mutex_lock(&total_queries_lock);
   uint32_t totalQueriesProcessedCopy = totalQueriesProcessed;
@@ -868,7 +874,10 @@ int setNumThreadsInFile(int numThreads) {
   return 0;
 }
 
-static enum MHD_Result handleGetAdlists(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetAdlists(struct MHD_Connection *connection,
+                                        const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char *adlists = getAllAdlists();
   if (!adlists) {
     const char *response = "{\"error\": \"Failed to retrieve adlists\"}";
@@ -883,100 +892,94 @@ static enum MHD_Result handleGetAdlists(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result handleAddAdlist(struct MHD_Connection *connection) {
-  const char *url =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "url");
-  if (!url) {
-    const char *response = "{\"error\": \"Missing URL parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleAddAdlist(struct MHD_Connection *connection,
+                                       const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
+  cJSON *url_json = cJSON_GetObjectItemCaseSensitive(body, "url");
+  if (!cJSON_IsString(url_json)) {
+    return send_error_response(connection, "Missing URL parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *url = url_json->valuestring;
 
   if (addAdlistFile(url) == 0) {
-    const char *response = "{\"status\": \"Adlist added\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "Adlist added");
   } else {
-    const char *response = "{\"error\": \"Failed to add adlist\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to add adlist",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result handleRemoveAdlist(struct MHD_Connection *connection) {
-  const char *url =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "url");
-  if (!url) {
-    const char *response = "{\"error\": \"Missing URL parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleRemoveAdlist(struct MHD_Connection *connection,
+                                          const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
+  cJSON *url_json = cJSON_GetObjectItemCaseSensitive(body, "url");
+  if (!cJSON_IsString(url_json)) {
+    return send_error_response(connection, "Missing URL parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *url = url_json->valuestring;
 
   if (removeAdlistFile(url) == 0) {
-    const char *response = "{\"status\": \"Adlist removed\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "Adlist removed");
   } else {
-    const char *response = "{\"error\": \"Failed to remove adlist\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to remove adlist",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result handleEnableAdlist(struct MHD_Connection *connection) {
-  const char *url =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "url");
-  if (!url) {
-    const char *response = "{\"error\": \"Missing URL parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleEnableAdlist(struct MHD_Connection *connection,
+                                          const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
+  cJSON *url_json = cJSON_GetObjectItemCaseSensitive(body, "url");
+  if (!cJSON_IsString(url_json)) {
+    return send_error_response(connection, "Missing URL parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *url = url_json->valuestring;
 
   if (changeAdlistStatus(url, 0) == 0) {
-    const char *response = "{\"status\": \"Adlist enabled\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "Adlist enabled");
   } else {
-    const char *response = "{\"error\": \"Failed to enable adlist\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to enable adlist",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result handleDisableAdlist(struct MHD_Connection *connection) {
-  const char *url =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "url");
-  if (!url) {
-    const char *response = "{\"error\": \"Missing URL parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleDisableAdlist(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
+  cJSON *url_json = cJSON_GetObjectItemCaseSensitive(body, "url");
+  if (!cJSON_IsString(url_json)) {
+    return send_error_response(connection, "Missing URL parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *url = url_json->valuestring;
 
   if (changeAdlistStatus(url, 1) == 0) {
-    const char *response = "{\"status\": \"Adlist disabled\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "Adlist disabled");
   } else {
-    const char *response = "{\"error\": \"Failed to disable adlist\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to disable adlist",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result
-handleDomainsInAdlist(struct MHD_Connection *connection) {
+static enum MHD_Result handleDomainsInAdlist(struct MHD_Connection *connection,
+                                             const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[1024];
   uint32_t domainsInAdlist = getDomainsInAdlist();
   snprintf(response, sizeof(response), "{\"domainsInAdlist\": %d}",
@@ -986,37 +989,50 @@ handleDomainsInAdlist(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result enableAdCacheCall(struct MHD_Connection *connection) {
+static enum MHD_Result enableAdCacheCall(struct MHD_Connection *connection,
+                                         const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
   enableAdCache();
-  const char *response = "{\"status\": \"Ad cache enabled\"}";
-  struct MHD_Response *resp = MHD_create_response_from_buffer(
-      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  return send_success_response(connection, "Ad cache enabled");
 }
 
-static enum MHD_Result disableAdCacheCall(struct MHD_Connection *connection) {
+static enum MHD_Result disableAdCacheCall(struct MHD_Connection *connection,
+                                          const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
   disableAdCache();
-  const char *response = "{\"status\": \"Ad cache disabled\"}";
-  struct MHD_Response *resp = MHD_create_response_from_buffer(
-      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  return send_success_response(connection, "Ad cache disabled");
 }
 
-static enum MHD_Result handleReloadAdlists(struct MHD_Connection *connection) {
+static enum MHD_Result handleReloadAdlists(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
   if (loadAdlistsFromFile() == 0) {
-    const char *response = "{\"status\": \"Adlists reloaded\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "Adlists reloaded");
   } else {
-    const char *response = "{\"error\": \"Failed to reload adlists\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to reload adlists",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result handleTerminalOutput(struct MHD_Connection *connection) {
+static enum MHD_Result handleTerminalOutput(struct MHD_Connection *connection,
+                                            const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char *output = getTerminalOutput();
   if (!output) {
     const char *response =
@@ -1032,7 +1048,14 @@ static enum MHD_Result handleTerminalOutput(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result handleRestartDNS(struct MHD_Connection *connection) {
+static enum MHD_Result handleRestartDNS(struct MHD_Connection *connection,
+                                        const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
   const char *response = "{\"status\": \"Restarting DNS server\"}";
   struct MHD_Response *resp = MHD_create_response_from_buffer(
       strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
@@ -1052,63 +1075,63 @@ static enum MHD_Result handleRestartDNS(struct MHD_Connection *connection) {
   exit(EXIT_FAILURE);
 }
 
-static enum MHD_Result handleLogin(struct MHD_Connection *connection) {
-  const char *username = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "username");
-  const char *password = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "password");
-
-  if (!username || !password) {
-    const char *response = "{\"error\": \"Missing username or password\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleLogin(struct MHD_Connection *connection,
+                                   const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
 
-  if (handleLoginPassData(username, password) == 0) {
-    const char *response = "{\"status\": \"Login successful\"}";
-    printf("Login successful for user: %s\n", username);
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  cJSON *username_json = cJSON_GetObjectItemCaseSensitive(body, "username");
+  cJSON *password_json = cJSON_GetObjectItemCaseSensitive(body, "password");
+
+  if (!cJSON_IsString(username_json) || !cJSON_IsString(password_json)) {
+    return send_error_response(connection, "Missing username or password",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+
+  if (handleLoginPassData(username_json->valuestring,
+                          password_json->valuestring) == 0) {
+    printf("Login successful for user: %s\n", username_json->valuestring);
+    return send_success_response(connection, "Login successful");
   } else {
-    const char *response = "{\"error\": \"Invalid credentials\"}";
-    printf("Invalid credentials for user: %s\n", username);
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_UNAUTHORIZED, resp);
+    printf("Invalid credentials for user: %s\n", username_json->valuestring);
+    return send_error_response(connection, "Invalid credentials",
+                               MHD_HTTP_UNAUTHORIZED);
   }
 }
 
-static enum MHD_Result handleAddLocalDomain(struct MHD_Connection *connection) {
-  const char *domain =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "domain");
-  const char *ip =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "ip");
-  const char *name =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "name");
-  if (!domain || !ip) {
-    const char *response = "{\"error\": \"Missing domain or IP parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleAddLocalDomain(struct MHD_Connection *connection,
+                                            const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
 
-  if (addLocalDNSToCache(ip, domain, name) == 0) {
-    const char *response = "{\"status\": \"Local domain added\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(body, "domain");
+  cJSON *ip_json = cJSON_GetObjectItemCaseSensitive(body, "ip");
+  cJSON *name_json = cJSON_GetObjectItemCaseSensitive(body, "name");
+
+  if (!cJSON_IsString(domain_json) || !cJSON_IsString(ip_json)) {
+    return send_error_response(connection, "Missing domain or IP parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *name = cJSON_IsString(name_json) ? name_json->valuestring : "";
+
+  if (addLocalDNSToCache(ip_json->valuestring, domain_json->valuestring,
+                         name) == 0) {
+    return send_success_response(connection, "Local domain added");
   } else {
-    const char *response = "{\"error\": \"Failed to add local domain\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to add local domain",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
 static enum MHD_Result
-handleGetLocalDNSEntries(struct MHD_Connection *connection) {
+handleGetLocalDNSEntries(struct MHD_Connection *connection, const char *method,
+                         cJSON *body) {
+  (void)method;
+  (void)body;
   char *localDNSEntries = getLocalDNSEntries();
   if (!localDNSEntries) {
     const char *response =
@@ -1126,30 +1149,30 @@ handleGetLocalDNSEntries(struct MHD_Connection *connection) {
 }
 
 static enum MHD_Result
-handleRemoveLocalDomain(struct MHD_Connection *connection) {
-  const char *domain =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "domain");
-  if (!domain) {
-    const char *response = "{\"error\": \"Missing domain parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+handleRemoveLocalDomain(struct MHD_Connection *connection, const char *method,
+                        cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
+  cJSON *domain_json = cJSON_GetObjectItemCaseSensitive(body, "domain");
+  if (!cJSON_IsString(domain_json)) {
+    return send_error_response(connection, "Missing domain parameter",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
-  if (removeLocalEntry(domain) == 0) {
-    const char *response = "{\"status\": \"Local domain removed\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  if (removeLocalEntry(domain_json->valuestring) == 0) {
+    return send_success_response(connection, "Local domain removed");
   } else {
-    const char *response = "{\"error\": \"Failed to remove local domain\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to remove local domain",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result handleGetNumThreads(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetNumThreads(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[256];
   uint32_t numThreads = getNumThreads();
   snprintf(response, sizeof(response), "{\"numThreads\": %d}", numThreads);
@@ -1159,7 +1182,10 @@ static enum MHD_Result handleGetNumThreads(struct MHD_Connection *connection) {
 }
 
 static enum MHD_Result
-handleGetAvgCacheLookupTime(struct MHD_Connection *connection) {
+handleGetAvgCacheLookupTime(struct MHD_Connection *connection,
+                            const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[256];
   double avgCacheLookupTime = running_avgs_get_cache_lookup();
   printf("Average Cache Lookup Time: %f\n", avgCacheLookupTime);
@@ -1171,7 +1197,10 @@ handleGetAvgCacheLookupTime(struct MHD_Connection *connection) {
 }
 
 static enum MHD_Result
-handleGetAvgCacheResponseTime(struct MHD_Connection *connection) {
+handleGetAvgCacheResponseTime(struct MHD_Connection *connection,
+                              const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[256];
   double avgCacheResponseTime = running_avgs_get_cached_query_response();
   snprintf(response, sizeof(response), "{\"avgCacheResponseTime\": %.5f}",
@@ -1182,7 +1211,10 @@ handleGetAvgCacheResponseTime(struct MHD_Connection *connection) {
 }
 
 static enum MHD_Result
-handleGetAvgNCResponseTime(struct MHD_Connection *connection) {
+handleGetAvgNCResponseTime(struct MHD_Connection *connection,
+                           const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[256];
   double avgAvgNCResponseTime = running_avgs_get_query_response();
   snprintf(response, sizeof(response), "{\"avgAvgNCResponseTime\": %.5f}",
@@ -1192,31 +1224,40 @@ handleGetAvgNCResponseTime(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result handleSetNumThreads(struct MHD_Connection *connection) {
-  const char *numThreadsStr = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "numThreads");
-  if (!numThreadsStr) {
-    const char *response = "{\"error\": \"Missing numThreads parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleSetNumThreads(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
+  cJSON *numThreads_json = cJSON_GetObjectItemCaseSensitive(body, "numThreads");
+  if (!numThreads_json) {
+    return send_error_response(connection, "Missing numThreads parameter",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
-  int numThreads = atoi(numThreadsStr);
-  if (setNumThreadsInFile(numThreads) == 0) {
-    const char *response = "{\"status\": \"Number of threads set\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  int numThreads = 0;
+  if (cJSON_IsNumber(numThreads_json)) {
+    numThreads = numThreads_json->valueint;
+  } else if (cJSON_IsString(numThreads_json)) {
+    numThreads = atoi(numThreads_json->valuestring);
   } else {
-    const char *response = "{\"error\": \"Failed to set number of threads\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Invalid numThreads parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+
+  if (setNumThreadsInFile(numThreads) == 0) {
+    return send_success_response(connection, "Number of threads set");
+  } else {
+    return send_error_response(connection, "Failed to set number of threads",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result handleGetUpstreamDNS(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetUpstreamDNS(struct MHD_Connection *connection,
+                                            const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[256];
   char *upstreamDNS = getUpstreamDNS();
   if (upstreamDNS) {
@@ -1235,26 +1276,24 @@ static enum MHD_Result handleGetUpstreamDNS(struct MHD_Connection *connection) {
   }
 }
 
-static enum MHD_Result handleSetUpstreamDNS(struct MHD_Connection *connection) {
-  const char *upstreamDNS = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "upstreamDNS");
-  if (!upstreamDNS) {
-    const char *response = "{\"error\": \"Missing upstreamDNS parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleSetUpstreamDNS(struct MHD_Connection *connection,
+                                            const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
+  cJSON *upstreamDNS_json =
+      cJSON_GetObjectItemCaseSensitive(body, "upstreamDNS");
+  if (!cJSON_IsString(upstreamDNS_json)) {
+    return send_error_response(connection, "Missing upstreamDNS parameter",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
-  if (changeUpstreamDNS(upstreamDNS) == 0) {
-    const char *response = "{\"status\": \"Upstream DNS set\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  if (changeUpstreamDNS(upstreamDNS_json->valuestring) == 0) {
+    return send_success_response(connection, "Upstream DNS set");
   } else {
-    const char *response = "{\"error\": \"Failed to set upstream DNS\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to set upstream DNS",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -1262,8 +1301,10 @@ static enum MHD_Result handleSetUpstreamDNS(struct MHD_Connection *connection) {
 // DNSSEC API Handlers
 // ============================================================================
 
-static enum MHD_Result
-handleGetDnssecStatus(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetDnssecStatus(struct MHD_Connection *connection,
+                                             const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[64];
   snprintf(response, sizeof(response), "{\"enabled\":%s}",
            dnssec_is_enabled() ? "true" : "false");
@@ -1272,30 +1313,39 @@ handleGetDnssecStatus(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result
-handleSetDnssecStatus(struct MHD_Connection *connection) {
-  const char *enabled_str =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "enabled");
-  if (!enabled_str) {
-    const char *response = "{\"error\": \"Missing enabled parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleSetDnssecStatus(struct MHD_Connection *connection,
+                                             const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
+  cJSON *enabled_json = cJSON_GetObjectItemCaseSensitive(body, "enabled");
+  if (!enabled_json) {
+    return send_error_response(connection, "Missing enabled parameter",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
-  int enabled =
-      (strcmp(enabled_str, "1") == 0 || strcmp(enabled_str, "true") == 0);
-  dnssec_set_enabled(enabled);
+  int enabled = 0;
+  if (cJSON_IsBool(enabled_json)) {
+    enabled = cJSON_IsTrue(enabled_json);
+  } else if (cJSON_IsString(enabled_json)) {
+    enabled = (strcmp(enabled_json->valuestring, "1") == 0 ||
+               strcmp(enabled_json->valuestring, "true") == 0);
+  } else if (cJSON_IsNumber(enabled_json)) {
+    enabled = enabled_json->valueint;
+  }
 
+  dnssec_set_enabled(enabled);
   char response[64];
   snprintf(response, sizeof(response), "{\"status\":\"DNSSEC %s\"}",
            enabled ? "enabled" : "disabled");
-  struct MHD_Response *resp = MHD_create_response_from_buffer(
-      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  return send_json_response(connection, response, MHD_HTTP_OK);
 }
 
-static enum MHD_Result handleGetDnssecStats(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetDnssecStats(struct MHD_Connection *connection,
+                                            const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[256];
   snprintf(response, sizeof(response), "{\"validated\":%u,\"failed\":%u}",
            dnssec_get_validated_count(), dnssec_get_failed_count());
@@ -1308,7 +1358,10 @@ static enum MHD_Result handleGetDnssecStats(struct MHD_Connection *connection) {
 // DHCP API Handlers
 // ============================================================================
 
-static enum MHD_Result handleGetDhcpStatus(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetDhcpStatus(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char response[64];
   snprintf(response, sizeof(response), "{\"enabled\":%s}",
            dhcp_is_enabled() ? "true" : "false");
@@ -1317,29 +1370,39 @@ static enum MHD_Result handleGetDhcpStatus(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result handleSetDhcpStatus(struct MHD_Connection *connection) {
-  const char *enabled_str =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "enabled");
-  if (!enabled_str) {
-    const char *response = "{\"error\": \"Missing enabled parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleSetDhcpStatus(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
+  cJSON *enabled_json = cJSON_GetObjectItemCaseSensitive(body, "enabled");
+  if (!enabled_json) {
+    return send_error_response(connection, "Missing enabled parameter",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
-  bool enabled =
-      (strcmp(enabled_str, "1") == 0 || strcmp(enabled_str, "true") == 0);
-  dhcp_set_enabled(enabled);
+  int enabled = 0;
+  if (cJSON_IsBool(enabled_json)) {
+    enabled = cJSON_IsTrue(enabled_json);
+  } else if (cJSON_IsString(enabled_json)) {
+    enabled = (strcmp(enabled_json->valuestring, "1") == 0 ||
+               strcmp(enabled_json->valuestring, "true") == 0);
+  } else if (cJSON_IsNumber(enabled_json)) {
+    enabled = enabled_json->valueint;
+  }
 
+  dhcp_set_enabled(enabled);
   char response[64];
   snprintf(response, sizeof(response), "{\"status\":\"DHCP %s\"}",
            enabled ? "enabled" : "disabled");
-  struct MHD_Response *resp = MHD_create_response_from_buffer(
-      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-  return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  return send_json_response(connection, response, MHD_HTTP_OK);
 }
 
-static enum MHD_Result handleGetDhcpLeases(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetDhcpLeases(struct MHD_Connection *connection,
+                                           const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char *leases = dhcp_get_leases_json();
   if (!leases) {
     const char *response = "{\"error\": \"Failed to retrieve DHCP leases\"}";
@@ -1354,85 +1417,76 @@ static enum MHD_Result handleGetDhcpLeases(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result handleAddDhcpLease(struct MHD_Connection *connection) {
-  const char *mac_str =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "mac");
-  const char *ip_str =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "ip");
-  const char *name =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "name");
-
-  if (!mac_str || !ip_str) {
-    const char *response = "{\"error\": \"Missing mac or ip parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleAddDhcpLease(struct MHD_Connection *connection,
+                                          const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
+
+  cJSON *mac_json = cJSON_GetObjectItemCaseSensitive(body, "mac");
+  cJSON *ip_json = cJSON_GetObjectItemCaseSensitive(body, "ip");
+  cJSON *name_json = cJSON_GetObjectItemCaseSensitive(body, "name");
+
+  if (!cJSON_IsString(mac_json) || !cJSON_IsString(ip_json)) {
+    return send_error_response(connection, "Missing mac or ip parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *mac_str = mac_json->valuestring;
+  const char *ip_str = ip_json->valuestring;
+  const char *name = cJSON_IsString(name_json) ? name_json->valuestring : "";
 
   uint8_t mac[6];
   if (mac_str_to_bytes(mac_str, mac) != 0) {
-    const char *response = "{\"error\": \"Invalid MAC address format\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+    return send_error_response(connection, "Invalid MAC address format",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
   uint32_t ip = ip_str_to_uint(ip_str);
   if (ip == 0) {
-    const char *response = "{\"error\": \"Invalid IP address format\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+    return send_error_response(connection, "Invalid IP address format",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
   if (dhcp_add_static_lease(mac, ip, name) == 0) {
-    const char *response = "{\"status\": \"DHCP lease added\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "DHCP lease added");
   } else {
-    const char *response = "{\"error\": \"Failed to add DHCP lease\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to add DHCP lease",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result
-handleDeleteDhcpLease(struct MHD_Connection *connection) {
-  const char *mac_str =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "mac");
-
-  if (!mac_str) {
-    const char *response = "{\"error\": \"Missing mac parameter\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleDeleteDhcpLease(struct MHD_Connection *connection,
+                                             const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
+  cJSON *mac_json = cJSON_GetObjectItemCaseSensitive(body, "mac");
+  if (!cJSON_IsString(mac_json)) {
+    return send_error_response(connection, "Missing mac parameter",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+  const char *mac_str = mac_json->valuestring;
 
   uint8_t mac[6];
   if (mac_str_to_bytes(mac_str, mac) != 0) {
-    const char *response = "{\"error\": \"Invalid MAC address format\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+    return send_error_response(connection, "Invalid MAC address format",
+                               MHD_HTTP_BAD_REQUEST);
   }
 
   if (dhcp_remove_static_lease(mac) == 0) {
-    const char *response = "{\"status\": \"DHCP lease deleted\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+    return send_success_response(connection, "DHCP lease deleted");
   } else {
-    const char *response = "{\"error\": \"Failed to delete DHCP lease\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to delete DHCP lease",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
-static enum MHD_Result
-handleGetDhcpSettings(struct MHD_Connection *connection) {
+static enum MHD_Result handleGetDhcpSettings(struct MHD_Connection *connection,
+                                             const char *method, cJSON *body) {
+  (void)method;
+  (void)body;
   char *settings = dhcp_get_settings_json();
   if (!settings) {
     const char *response = "{\"error\": \"Failed to retrieve DHCP settings\"}";
@@ -1447,42 +1501,45 @@ handleGetDhcpSettings(struct MHD_Connection *connection) {
   return MHD_queue_response(connection, MHD_HTTP_OK, resp);
 }
 
-static enum MHD_Result
-handleSetDhcpSettings(struct MHD_Connection *connection) {
-  const char *range_start = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "rangeStart");
-  const char *range_end = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "rangeEnd");
-  const char *subnet = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "subnetMask");
-  const char *gateway =
-      MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "gateway");
-  const char *dns = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "dnsServer");
-  const char *lease_time_str = MHD_lookup_connection_value(
-      connection, MHD_GET_ARGUMENT_KIND, "leaseTime");
-
-  if (!range_start || !range_end || !subnet || !gateway || !dns) {
-    const char *response = "{\"error\": \"Missing required parameters\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, resp);
+static enum MHD_Result handleSetDhcpSettings(struct MHD_Connection *connection,
+                                             const char *method, cJSON *body) {
+  if (strcmp(method, "POST") != 0) {
+    return send_error_response(connection, "Method not allowed",
+                               MHD_HTTP_METHOD_NOT_ALLOWED);
   }
 
-  uint32_t lease_time = lease_time_str ? (uint32_t)atol(lease_time_str) : 86400;
+  cJSON *range_start_json =
+      cJSON_GetObjectItemCaseSensitive(body, "rangeStart");
+  cJSON *range_end_json = cJSON_GetObjectItemCaseSensitive(body, "rangeEnd");
+  cJSON *subnet_json = cJSON_GetObjectItemCaseSensitive(body, "subnetMask");
+  cJSON *gateway_json = cJSON_GetObjectItemCaseSensitive(body, "gateway");
+  cJSON *dns_json = cJSON_GetObjectItemCaseSensitive(body, "dnsServer");
+  cJSON *lease_time_json = cJSON_GetObjectItemCaseSensitive(body, "leaseTime");
 
-  if (dhcp_set_settings(ip_str_to_uint(range_start), ip_str_to_uint(range_end),
-                        ip_str_to_uint(subnet), ip_str_to_uint(gateway),
-                        ip_str_to_uint(dns), lease_time) == 0) {
-    const char *response = "{\"status\": \"DHCP settings updated\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_OK, resp);
+  if (!cJSON_IsString(range_start_json) || !cJSON_IsString(range_end_json) ||
+      !cJSON_IsString(subnet_json) || !cJSON_IsString(gateway_json) ||
+      !cJSON_IsString(dns_json)) {
+    return send_error_response(connection, "Missing required parameters",
+                               MHD_HTTP_BAD_REQUEST);
+  }
+
+  uint32_t lease_time = 86400;
+  if (cJSON_IsString(lease_time_json)) {
+    lease_time = (uint32_t)atol(lease_time_json->valuestring);
+  } else if (cJSON_IsNumber(lease_time_json)) {
+    lease_time = lease_time_json->valueint;
+  }
+
+  if (dhcp_set_settings(ip_str_to_uint(range_start_json->valuestring),
+                        ip_str_to_uint(range_end_json->valuestring),
+                        ip_str_to_uint(subnet_json->valuestring),
+                        ip_str_to_uint(gateway_json->valuestring),
+                        ip_str_to_uint(dns_json->valuestring),
+                        lease_time) == 0) {
+    return send_success_response(connection, "DHCP settings updated");
   } else {
-    const char *response = "{\"error\": \"Failed to update DHCP settings\"}";
-    struct MHD_Response *resp = MHD_create_response_from_buffer(
-        strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-    return MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp);
+    return send_error_response(connection, "Failed to update DHCP settings",
+                               MHD_HTTP_INTERNAL_SERVER_ERROR);
   }
 }
 
@@ -1523,18 +1580,17 @@ ApiEndpoint apiEndpoints[] = {
     {NULL, NULL} // Sentinel value to mark the end of the table
 };
 
-static enum MHD_Result dispatchRequest(const char *url,
-                                       struct MHD_Connection *connection) {
+static enum MHD_Result dispatchRequest(const char *url, const char *method,
+                                       struct MHD_Connection *connection,
+                                       cJSON *body) {
   for (int i = 0; apiEndpoints[i].endpoint != NULL; i++) {
     if (strcmp(url, apiEndpoints[i].endpoint) == 0) {
-      return apiEndpoints[i].handler(connection);
+      return apiEndpoints[i].handler(connection, method, body);
     }
   }
 
-  const char *response = "{\"error\": \"Unknown endpoint\"}";
-  struct MHD_Response *resp = MHD_create_response_from_buffer(
-      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-  return MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, resp);
+  return send_error_response(connection, "Unknown endpoint",
+                             MHD_HTTP_NOT_FOUND);
 }
 
 static enum MHD_Result
@@ -1544,25 +1600,75 @@ answer_to_connection(void *cls, struct MHD_Connection *connection,
                      void **con_cls) {
   (void)cls;
   (void)version;
-  (void)upload_data;
-  (void)upload_data_size;
-  (void)con_cls;
 
-  if (strcmp(method, "GET") == 0 || strcmp(method, "POST") == 0) {
-    return dispatchRequest(url, connection);
+  if (strcmp(method, "POST") == 0 || strcmp(method, "PUT") == 0) {
+    if (*con_cls == NULL) {
+      struct PostData *post_data = malloc(sizeof(struct PostData));
+      post_data->data = NULL;
+      post_data->size = 0;
+      *con_cls = post_data;
+      return MHD_YES;
+    }
+
+    if (*upload_data_size != 0) {
+      struct PostData *post_data = (struct PostData *)*con_cls;
+      post_data->data =
+          realloc(post_data->data, post_data->size + *upload_data_size + 1);
+      memcpy(post_data->data + post_data->size, upload_data, *upload_data_size);
+      post_data->size += *upload_data_size;
+      post_data->data[post_data->size] = '\0';
+      *upload_data_size = 0;
+      return MHD_YES;
+    }
   }
 
-  const char *response = "{\"error\": \"Method not allowed\"}";
-  struct MHD_Response *resp = MHD_create_response_from_buffer(
-      strlen(response), (uint8_t *)response, MHD_RESPMEM_MUST_COPY);
-  return MHD_queue_response(connection, MHD_HTTP_METHOD_NOT_ALLOWED, resp);
+  // Handle request processing
+  cJSON *json_body = NULL;
+  struct PostData *post_data = NULL;
+  if (strcmp(method, "POST") == 0 || strcmp(method, "PUT") == 0) {
+    post_data = (struct PostData *)*con_cls;
+    if (post_data && post_data->data) {
+      json_body = cJSON_Parse(post_data->data);
+    }
+  }
+
+  enum MHD_Result ret;
+  if (strcmp(method, "GET") == 0 || strcmp(method, "POST") == 0 ||
+      strcmp(method, "PUT") == 0 || strcmp(method, "DELETE") == 0) {
+    ret = dispatchRequest(url, method, connection, json_body);
+  } else {
+    ret = send_error_response(connection, "Method not allowed",
+                              MHD_HTTP_METHOD_NOT_ALLOWED);
+  }
+
+  if (json_body) {
+    cJSON_Delete(json_body);
+  }
+
+  return ret;
+}
+
+void request_completed(void *cls, struct MHD_Connection *connection,
+                       void **con_cls, enum MHD_RequestTerminationCode toe) {
+  (void)cls;
+  (void)connection;
+  (void)toe;
+  struct PostData *post_data = (struct PostData *)*con_cls;
+  if (post_data) {
+    if (post_data->data) {
+      free(post_data->data);
+    }
+    free(post_data);
+    *con_cls = NULL;
+  }
 }
 
 void *handleAPIs(void *arg) {
   (void)arg; // Unused parameter
   struct MHD_Daemon *daemon =
       MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 8081, NULL, NULL,
-                       &answer_to_connection, NULL, MHD_OPTION_END);
+                       &answer_to_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED,
+                       request_completed, NULL, MHD_OPTION_END);
   if (!daemon) {
     perror("Failed to start HTTP server");
     return NULL;

@@ -1282,8 +1282,10 @@
         // Toggle DHCP server on/off
         async function toggleDhcp(enabled) {
             try {
-                const response = await fetch(`/api/setDhcpStatus?enabled=${enabled ? '1' : '0'}`, {
-                    method: 'POST'
+                const response = await fetch('/api/setDhcpStatus', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
                 });
                 if (!response.ok) throw new Error('Failed to toggle DHCP');
                 const data = await response.json();
@@ -1342,11 +1344,12 @@
             }
 
             try {
-                const params = new URLSearchParams({
-                    rangeStart, rangeEnd, subnetMask, gateway, dnsServer, leaseTime
-                });
-                const response = await fetch(`/api/setDhcpSettings?${params}`, {
-                    method: 'POST'
+                const response = await fetch('/api/saveDhcpSettings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rangeStart, rangeEnd, subnetMask, gateway, dnsServer, leaseTime
+                    })
                 });
                 if (!response.ok) throw new Error('Failed to save settings');
 
@@ -1438,11 +1441,13 @@
             }
 
             try {
-                const params = new URLSearchParams({ mac, ip });
-                if (name) params.append('name', name);
+                const body = { mac, ip };
+                if (name) body.name = name;
 
-                const response = await fetch(`/api/addDhcpLease?${params}`, {
-                    method: 'POST'
+                const response = await fetch('/api/addDhcpLease', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
                 });
 
                 if (!response.ok) {
@@ -1466,8 +1471,10 @@
             }
 
             try {
-                const response = await fetch(`/api/deleteDhcpLease?mac=${encodeURIComponent(mac)}`, {
-                    method: 'POST'
+                const response = await fetch('/api/deleteDhcpLease', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mac })
                 });
 
                 if (!response.ok) {

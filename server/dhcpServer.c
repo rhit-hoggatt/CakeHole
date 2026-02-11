@@ -57,7 +57,7 @@ int mac_str_to_bytes(const char *mac_str, uint8_t *mac) {
   }
 
   for (int i = 0; i < 6; i++) {
-    if (values[i] < 0 || values[i] > 255)
+    if (values[i] > 255)
       return -1;
     mac[i] = (uint8_t)values[i];
   }
@@ -535,6 +535,7 @@ static int build_dhcp_response(DHCPMessage *response,
 
 static void handle_dhcp_discover(int sock, const DHCPMessage *request,
                                  struct sockaddr_in *client_addr) {
+  (void)client_addr; // Unused parameter
   pthread_mutex_lock(&dhcp_mutex);
 
   uint32_t offered_ip = allocate_ip_for_mac(request->chaddr);
@@ -573,6 +574,7 @@ static void handle_dhcp_discover(int sock, const DHCPMessage *request,
 
 static void handle_dhcp_request(int sock, const DHCPMessage *request,
                                 struct sockaddr_in *client_addr) {
+  (void)client_addr; // Unused parameter
   pthread_mutex_lock(&dhcp_mutex);
 
   uint32_t requested_ip = get_requested_ip(request);

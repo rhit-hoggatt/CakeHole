@@ -99,6 +99,35 @@ main() {
     info "Application directory not found: $INSTALL_DIR"
   fi
 
+  # 5. Disable and clean up UFW if it was set up by CakeHole
+  if command -v ufw &> /dev/null; then
+    info "Cleaning up UFW firewall rules..."
+
+    # Remove CakeHole-specific rules
+    ufw delete allow 53/udp 2>/dev/null && info "Removed UFW rule for port 53/udp (DNS)." || true
+    ufw delete allow 67/udp 2>/dev/null && info "Removed UFW rule for port 67/udp (DHCP)." || true
+    ufw delete allow 3333/tcp 2>/dev/null && info "Removed UFW rule for port 3333/tcp (Web UI)." || true
+    ufw delete allow out 3333/tcp 2>/dev/null && info "Removed UFW outbound rule for port 3333/tcp." || true
+
+    # Disable UFW to restore connectivity
+    info "Disabling UFW..."
+    if ufw --force disable; then
+      info "UFW disabled successfully."
+    else
+      error "Failed to disable UFW. You may need to run 'sudo ufw disable' manually."
+    fi
+
+    # Reset UFW to factory defaults
+    info "Resetting UFW to default state..."
+    if ufw --force reset; then
+      info "UFW reset to defaults."
+    else
+      error "Failed to reset UFW. You may need to run 'sudo ufw --force reset' manually."
+    fi
+  else
+    info "UFW is not installed. Skipping firewall cleanup."
+  fi
+
   info "--------------------------------------------------------------------"
   info "CakeHole ($PROJECT_NAME) uninstallation attempt complete."
   info "--------------------------------------------------------------------"

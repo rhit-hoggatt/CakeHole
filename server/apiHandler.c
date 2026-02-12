@@ -1515,6 +1515,7 @@ static enum MHD_Result handleSetDhcpSettings(struct MHD_Connection *connection,
   cJSON *gateway_json = cJSON_GetObjectItemCaseSensitive(body, "gateway");
   cJSON *dns_json = cJSON_GetObjectItemCaseSensitive(body, "dnsServer");
   cJSON *lease_time_json = cJSON_GetObjectItemCaseSensitive(body, "leaseTime");
+  cJSON *server_ip_json = cJSON_GetObjectItemCaseSensitive(body, "serverIp");
 
   if (!cJSON_IsString(range_start_json) || !cJSON_IsString(range_end_json) ||
       !cJSON_IsString(subnet_json) || !cJSON_IsString(gateway_json) ||
@@ -1530,12 +1531,17 @@ static enum MHD_Result handleSetDhcpSettings(struct MHD_Connection *connection,
     lease_time = lease_time_json->valueint;
   }
 
+  uint32_t server_ip = 0;
+  if (cJSON_IsString(server_ip_json)) {
+    server_ip = ip_str_to_uint(server_ip_json->valuestring);
+  }
+
   if (dhcp_set_settings(ip_str_to_uint(range_start_json->valuestring),
                         ip_str_to_uint(range_end_json->valuestring),
                         ip_str_to_uint(subnet_json->valuestring),
                         ip_str_to_uint(gateway_json->valuestring),
-                        ip_str_to_uint(dns_json->valuestring),
-                        lease_time) == 0) {
+                        ip_str_to_uint(dns_json->valuestring), lease_time,
+                        server_ip) == 0) {
     return send_success_response(connection, "DHCP settings updated");
   } else {
     return send_error_response(connection, "Failed to update DHCP settings",

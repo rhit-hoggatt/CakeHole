@@ -2,12 +2,15 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -157,19 +160,45 @@ int dhcp_load_config(void) {
   }
 
   pthread_mutex_unlock(&dhcp_mutex);
+
+  // Auto-detect server IP if not configured
+  if (dhcp_config.server_ip == 0) {
+    struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == 0) {
+      for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+          continue;
+        if (ifa->ifa_addr->sa_family != AF_INET)
+          continue;
+        // Skip loopback
+        if (ifa->ifa_flags & IFF_LOOPBACK)
+          continue;
+        struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+        dhcp_config.server_ip = ntohl(sa->sin_addr.s_addr);
+        char ip_buf[INET_ADDRSTRLEN];
+        ip_uint_to_str(dhcp_config.server_ip, ip_buf);
+        printf("DHCP: Auto-detected server IP: %s (interface %s)\n", ip_buf,
+               ifa->ifa_name);
+        break;
+      }
+      freeifaddrs(ifaddr);
+    }
+    if (dhcp_config.server_ip == 0) {
+      printf("DHCP: WARNING - Could not auto-detect server IP!\n");
+    }
+  }
+
   printf("DHCP: Loaded config (enabled=%d, leases=%d)\n", dhcp_config.enabled,
          dhcp_lease_count);
   return 0;
 }
 
-int dhcp_save_config(void) {
-  pthread_mutex_lock(&dhcp_mutex);
-
+// Internal save function - caller MUST hold dhcp_mutex
+static int dhcp_save_config_locked(void) {
   // Save config
   FILE *file = fopen(DHCP_CONFIG_FILE, "w");
   if (!file) {
     perror("Failed to open DHCP config file for writing");
-    pthread_mutex_unlock(&dhcp_mutex);
     return -1;
   }
 
@@ -207,7 +236,6 @@ int dhcp_save_config(void) {
   file = fopen(DHCP_LEASES_FILE, "w");
   if (!file) {
     perror("Failed to open DHCP leases file for writing");
-    pthread_mutex_unlock(&dhcp_mutex);
     return -1;
   }
 
@@ -226,8 +254,14 @@ int dhcp_save_config(void) {
   }
 
   fclose(file);
-  pthread_mutex_unlock(&dhcp_mutex);
   return 0;
+}
+
+int dhcp_save_config(void) {
+  pthread_mutex_lock(&dhcp_mutex);
+  int result = dhcp_save_config_locked();
+  pthread_mutex_unlock(&dhcp_mutex);
+  return result;
 }
 
 // ============================================================================
@@ -267,8 +301,8 @@ int dhcp_add_static_lease(const uint8_t *mac, uint32_t ip,
       strncpy(existing->hostname, hostname, MAX_HOSTNAME_LEN - 1);
       existing->hostname[MAX_HOSTNAME_LEN - 1] = '\0';
     }
+    dhcp_save_config_locked();
     pthread_mutex_unlock(&dhcp_mutex);
-    dhcp_save_config();
     return 0;
   }
 
@@ -291,9 +325,9 @@ int dhcp_add_static_lease(const uint8_t *mac, uint32_t ip,
   }
 
   dhcp_lease_count++;
+  dhcp_save_config_locked();
   pthread_mutex_unlock(&dhcp_mutex);
 
-  dhcp_save_config();
   return 0;
 }
 
@@ -307,8 +341,8 @@ int dhcp_remove_static_lease(const uint8_t *mac) {
         dhcp_leases[j] = dhcp_leases[j + 1];
       }
       dhcp_lease_count--;
+      dhcp_save_config_locked();
       pthread_mutex_unlock(&dhcp_mutex);
-      dhcp_save_config();
       return 0;
     }
   }
@@ -382,7 +416,8 @@ char *dhcp_get_settings_json(void) {
 
 int dhcp_set_settings(uint32_t range_start, uint32_t range_end,
                       uint32_t subnet_mask, uint32_t gateway,
-                      uint32_t dns_server, uint32_t lease_time) {
+                      uint32_t dns_server, uint32_t lease_time,
+                      uint32_t server_ip) {
   pthread_mutex_lock(&dhcp_mutex);
 
   dhcp_config.range_start = range_start;
@@ -391,6 +426,9 @@ int dhcp_set_settings(uint32_t range_start, uint32_t range_end,
   dhcp_config.gateway = gateway;
   dhcp_config.dns_server = dns_server;
   dhcp_config.lease_time = lease_time;
+  if (server_ip != 0) {
+    dhcp_config.server_ip = server_ip;
+  }
 
   pthread_mutex_unlock(&dhcp_mutex);
   return dhcp_save_config();

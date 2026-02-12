@@ -6,7 +6,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
 // DHCP Ports
 #define DHCP_SERVER_PORT 67
 #define DHCP_CLIENT_PORT 68
@@ -117,7 +116,8 @@ int dhcp_save_config(void);
 char *dhcp_get_settings_json(void);
 int dhcp_set_settings(uint32_t range_start, uint32_t range_end,
                       uint32_t subnet_mask, uint32_t gateway,
-                      uint32_t dns_server, uint32_t lease_time);
+                      uint32_t dns_server, uint32_t lease_time,
+                      uint32_t server_ip);
 
 // Utility functions
 int mac_str_to_bytes(const char *mac_str, uint8_t *mac);
